@@ -31,6 +31,9 @@ step() {
 }
 
 # --- Spinner (POSIX) ---
+# Uso: long_running_cmd &
+#       spinner $! "Mensaje..."
+#       wait $!
 spinner() {
     local pid=$1 msg="$2" delay=0.1 i=0
     local chars='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
@@ -65,8 +68,9 @@ fi
 # ============================================================
 # 1. ACTUALIZAR PAQUETES E INSTALAR DEPENDENCIAS
 # ============================================================
-echo "[1/5] Actualizando lista de paquetes e instalando dependencias..."
-echo ""
+step "PASO 1/5 · Paquetes y Dependencias"
+
+apk update
 
 # SQM (Smart Queue Management)
 apk add luci-app-sqm sqm-scripts sqm-scripts-extra kmod-sched-cake kmod-ifb 2>/dev/null
@@ -148,10 +152,14 @@ BLOCKLIST_URL="https://raw.githubusercontent.com/emiliodallatorre/adult-hosts-li
 info "Descargando lista de bloqueo adulto desde GitHub..."
 if command -v curl >/dev/null 2>&1; then
     curl -sL --connect-timeout 10 --max-time 30 "$BLOCKLIST_URL" 2>/dev/null | \
-        sed -n 's/^\([^#[:space:]].*\)/address=\/\1\/#/p' >> /etc/dnsmasq.d/safesearch.conf
+        grep -v '^[[:space:]]*$' | grep -v '^[[:space:]]*#' | \
+        sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | \
+        sed 's|.*|address=/&/#|' >> /etc/dnsmasq.d/safesearch.conf
 elif command -v wget >/dev/null 2>&1; then
     wget -qO- --timeout=10 --tries=1 "$BLOCKLIST_URL" 2>/dev/null | \
-        sed -n 's/^\([^#[:space:]].*\)/address=\/\1\/#/p' >> /etc/dnsmasq.d/safesearch.conf
+        grep -v '^[[:space:]]*$' | grep -v '^[[:space:]]*#' | \
+        sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | \
+        sed 's|.*|address=/&/#|' >> /etc/dnsmasq.d/safesearch.conf
 fi
 BLOCKED=$(grep -c 'address=/' /etc/dnsmasq.d/safesearch.conf 2>/dev/null || echo "0")
 ok "Lista de bloqueo cargada: ${BLOCKED} dominios bloqueados."
@@ -161,6 +169,12 @@ uci commit dhcp
 
 ok "DNS configurado: Cloudflare Family + Google + SafeSearch activo."
 
+# --- Bloquear DNS IPv6 para evitar bypass del filtro ---
+if uci get dhcp.@dnsmasq[0].filter_aaaa >/dev/null 2>&1; then
+    uci set dhcp.@dnsmasq[0].filter_aaaa="1"
+    info "Filtro AAAA (IPv6 DNS) activado para prevenir bypass."
+fi
+
 step "PASO 3/5 · DNS-over-HTTPS (DoH)"
 
 if [ -f /etc/config/https-dns-proxy ]; then
@@ -169,7 +183,7 @@ if [ -f /etc/config/https-dns-proxy ]; then
 
     # Instancia 1: Cloudflare Family DoH
     uci add https-dns-proxy https-dns-proxy
-    uci set https-dns-proxy.@https-dns-proxy[0].bootstrap_dns="1.1.1.1,1.0.0.1"
+    uci set https-dns-proxy.@https-dns-proxy[0].bootstrap_dns="1.1.1.3,1.0.0.3"
     uci set https-dns-proxy.@https-dns-proxy[0].resolver_url="https://family.cloudflare-dns.com/dns-query"
     uci set https-dns-proxy.@https-dns-proxy[0].listen_addr="127.0.0.1"
     uci set https-dns-proxy.@https-dns-proxy[0].listen_port="5053"
@@ -194,6 +208,8 @@ if [ -f /etc/config/https-dns-proxy ]; then
     uci delete dhcp.@dnsmasq[0].server 2>/dev/null
     uci add_list dhcp.@dnsmasq[0].server="127.0.0.1#5053"
     uci add_list dhcp.@dnsmasq[0].server="127.0.0.1#5054"
+    uci add_list dhcp.@dnsmasq[0].server="::1#5053"
+    uci add_list dhcp.@dnsmasq[0].server="::1#5054"
     uci commit dhcp
     /etc/init.d/dnsmasq restart
 
@@ -292,7 +308,6 @@ net.ipv4.tcp_wmem=4096 65536 16777216
 net.ipv4.tcp_notsent_lowat=16384
 
 # BBR congestion control (si el kernel lo soporta)
-net.core.default_qdisc=cake
 net.ipv4.tcp_congestion_control=bbr
 
 # No resetear cwnd tras idle (evita arranque lento tras pausa)
