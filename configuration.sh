@@ -314,9 +314,9 @@ else
         esac
 
         # Eliminar TODAS las wifi-iface previas de esta radio (excepto guest)
-        uci show wireless | grep "wifi-iface" | grep "device='${RADIO}'" | \
-            cut -d. -f2 | cut -d= -f1 | while read -r old_iface; do
-            [ "$old_iface" != "guest" ] && uci delete wireless."$old_iface" 2>/dev/null
+        uci show wireless | grep "=wifi-iface" | cut -d= -f1 | cut -d. -f2 | while read -r old_iface; do
+            dev=$(uci -q get wireless."$old_iface".device 2>/dev/null)
+            [ "$dev" = "$RADIO" ] && [ "$old_iface" != "guest" ] && uci delete wireless."$old_iface" 2>/dev/null
         done
 
         # Crear una única wifi-iface limpia por radio
