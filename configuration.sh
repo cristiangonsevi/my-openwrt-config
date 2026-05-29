@@ -498,50 +498,382 @@ FirewallRuleSet users-to-router {
 }
 NDS_EOF
 
-        # Página splash
-        cat > /etc/nodogsplash/htdocs/splash.html << 'HTML_EOF'
+        # Calcular valores legibles para el splash
+        TIMEOUT_MINS=$((GUEST_TIMEOUT_SEC / 60))
+        COOLDOWN_HOURS=$((GUEST_COOLDOWN_SEC / 3600))
+        GUEST_SPEED_MBPS=$((GUEST_SPEED_KBPS / 1000))
+        [ $TIMEOUT_MINS -ge 60 ] && TIMEOUT_HUMAN="$((TIMEOUT_MINS / 60))h $((TIMEOUT_MINS % 60))m" || TIMEOUT_HUMAN="${TIMEOUT_MINS} min"
+        [ $COOLDOWN_HOURS -ge 1 ] && COOLDOWN_HUMAN="${COOLDOWN_HOURS} hora(s)" || COOLDOWN_HUMAN="${COOLDOWN_HOURS}h"
+
+        cat > /etc/nodogsplash/htdocs/splash.html << HTML_EOF
 <!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CRISEGO-INVITADOS</title>
+<title>$GUEST_SSID</title>
 <style>
-* { margin:0; padding:0; box-sizing:border-box; }
-body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee;
-       display:flex; justify-content:center; align-items:center; min-height:100vh; }
-.card { background: #16213e; border-radius: 16px; padding: 2rem;
-        max-width: 380px; width: 90%; text-align: center; box-shadow: 0 8px 32px rgba(0,0,0,.3); }
-h1 { color: #e94560; font-size: 1.5rem; margin-bottom: .5rem; }
-p { color: #a0a0b0; font-size: .9rem; margin-bottom: 1.5rem; }
-.btn { display: block; width: 100%; padding: 14px; background: #e94560;
-       color: #fff; border: none; border-radius: 10px; font-size: 1rem;
-       font-weight: bold; cursor: pointer; }
-.rules { background: #0f3460; border-radius: 10px; padding: 1rem;
-         margin: 1.5rem 0; text-align: left; font-size: .8rem; line-height:1.6; }
-.rules li { margin: .3rem 0; }
-.footer { font-size: .7rem; color: #555; margin-top: 1rem; }
+
+  *, *::before, *::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  :root {
+    --bg: #09090b;
+    --surface: #18181b;
+    --surface-2: #27272a;
+    --border: rgba(255,255,255,0.08);
+    --border-hover: rgba(255,255,255,0.16);
+    --text-primary: #fafafa;
+    --text-muted: #a1a1aa;
+    --text-faint: #52525b;
+    --accent: #f4f4f5;
+    --accent-fg: #18181b;
+    --badge-bg: #27272a;
+    --badge-border: rgba(255,255,255,0.1);
+    --radius: 12px;
+    --radius-sm: 8px;
+    --radius-xs: 6px;
+  }
+
+  body {
+    font-family: 'Geist', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text-primary);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background-image:
+      radial-gradient(ellipse 80% 60% at 50% 0%, rgba(255,255,255,0.03) 0%, transparent 60%);
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.75rem;
+    max-width: 360px;
+    width: 100%;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.12), transparent);
+  }
+
+  .header {
+    margin-bottom: 1.25rem;
+  }
+
+  .network-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--badge-bg);
+    border: 1px solid var(--badge-border);
+    border-radius: 99px;
+    padding: 4px 10px 4px 7px;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-muted);
+    letter-spacing: 0.02em;
+    margin-bottom: 1rem;
+  }
+
+  .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #22c55e;
+    box-shadow: 0 0 6px #22c55e88;
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  h1 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+  }
+
+  .subtitle {
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+  }
+
+  .divider {
+    height: 1px;
+    background: var(--border);
+    margin: 1.25rem 0;
+  }
+
+  .rules-grid {
+    display: grid;
+    gap: 6px;
+    margin-bottom: 1.25rem;
+  }
+
+  .rule-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 11px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+    transition: border-color 0.15s;
+  }
+
+  .rule-item:hover {
+    border-color: var(--border-hover);
+  }
+
+  .rule-icon {
+    font-size: 15px;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+
+  .rule-text {
+    flex: 1;
+  }
+
+  .rule-value {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    padding: 10px 16px;
+    background: var(--accent);
+    color: var(--accent-fg);
+    border: none;
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    font-size: 0.875rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    cursor: pointer;
+    transition: opacity 0.15s, transform 0.1s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .btn:hover {
+    opacity: 0.92;
+  }
+
+  .btn:active {
+    transform: scale(0.98);
+    opacity: 0.85;
+  }
+
+  .btn svg {
+    width: 15px;
+    height: 15px;
+    flex-shrink: 0;
+  }
+
+  .promo-section {
+    margin-top: 1.25rem;
+  }
+
+  .promo-label {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: var(--text-faint);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .promo-label::before,
+  .promo-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  .promo-cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .promo-card {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 12px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    text-decoration: none;
+    transition: border-color 0.15s, background 0.15s;
+    cursor: pointer;
+  }
+
+  .promo-card:hover {
+    border-color: var(--border-hover);
+    background: #2d2d30;
+  }
+
+  .promo-card:active {
+    transform: scale(0.98);
+  }
+
+  .promo-name {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: -0.01em;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .promo-name svg {
+    width: 11px;
+    height: 11px;
+    color: var(--text-faint);
+    flex-shrink: 0;
+  }
+
+  .promo-desc {
+    font-size: 0.6875rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+  }
+
+  .footer {
+    margin-top: 1rem;
+    text-align: center;
+    font-size: 0.6875rem;
+    color: var(--text-faint);
+    letter-spacing: 0.02em;
+  }
+
+  .footer a {
+    color: var(--text-faint);
+    text-decoration: none;
+  }
 </style>
 </head>
 <body>
+
 <div class="card">
-  <h1>CRISEGO-INVITADOS</h1>
-  <p>Acceso gratuito con límite de tiempo</p>
-  <div class="rules">
-    <ul>
-      <li>⏱ 1 hora de navegación</li>
-      <li>🔄 Se renueva cada 6 horas</li>
-      <li>🚫 Contenido adulto bloqueado</li>
-      <li>📶 Velocidad limitada a 5 Mbps</li>
-    </ul>
+  <div class="header">
+    <div class="network-badge">
+      <span class="dot"></span>
+      Red de invitados
+    </div>
+    <h1>$GUEST_SSID</h1>
+    <p class="subtitle">Acceso gratuito con límite de tiempo. Acepta las condiciones para continuar.</p>
   </div>
-  <form method="GET" action="$authaction">
-    <input type="hidden" name="tok" value="$tok">
-    <input type="hidden" name="redir" value="$redir">
-    <button type="submit" class="btn">Conectar a Internet</button>
+
+  <div class="divider"></div>
+
+  <div class="rules-grid">
+    <div class="rule-item">
+      <span class="rule-icon">⏱</span>
+      <span class="rule-text">Sesión disponible</span>
+      <span class="rule-value">$TIMEOUT_HUMAN</span>
+    </div>
+    <div class="rule-item">
+      <span class="rule-icon">🔄</span>
+      <span class="rule-text">Se renueva cada</span>
+      <span class="rule-value">$COOLDOWN_HUMAN</span>
+    </div>
+    <div class="rule-item">
+      <span class="rule-icon">🚫</span>
+      <span class="rule-text">Contenido adulto</span>
+      <span class="rule-value">Bloqueado</span>
+    </div>
+    <div class="rule-item">
+      <span class="rule-icon">📶</span>
+      <span class="rule-text">Velocidad máxima</span>
+      <span class="rule-value">$GUEST_SPEED_MBPS Mbps</span>
+    </div>
+  </div>
+
+  <form method="GET" action="\$authaction">
+    <input type="hidden" name="tok" value="\$tok">
+    <input type="hidden" name="redir" value="\$redir">
+    <button type="submit" class="btn">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M5 12.55a11 11 0 0 1 14.08 0"/>
+        <path d="M1.42 9a16 16 0 0 1 21.16 0"/>
+        <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+        <line x1="12" y1="20" x2="12.01" y2="20"/>
+      </svg>
+      Conectar a Internet
+    </button>
   </form>
-  <div class="footer">Powered by OpenWrt</div>
+
+  <div class="promo-section">
+    <div class="promo-label">Patrocinado por</div>
+    <div class="promo-cards">
+      <a class="promo-card" href="https://crisego.com" target="_blank" rel="noopener">
+        <span class="promo-name">
+          crisego.com
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+            <polyline points="15 3 21 3 21 9"/>
+            <line x1="10" y1="14" x2="21" y2="3"/>
+          </svg>
+        </span>
+        <span class="promo-desc">Soluciones y servicios tecnológicos</span>
+      </a>
+      <a class="promo-card" href="https://termisearch.com" target="_blank" rel="noopener">
+        <span class="promo-name">
+          termisearch.com
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+            <polyline points="15 3 21 3 21 9"/>
+            <line x1="10" y1="14" x2="21" y2="3"/>
+          </svg>
+        </span>
+        <span class="promo-desc">Búsqueda y gestión de términos</span>
+      </a>
+    </div>
+  </div>
+
+  <div class="footer">
+    Powered by OpenWrt &nbsp;·&nbsp; Al conectarte aceptas las condiciones de uso
+  </div>
 </div>
+
 </body>
 </html>
 HTML_EOF
