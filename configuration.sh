@@ -45,6 +45,69 @@ spinner() {
     printf "\r\033[K"
 }
 
+# ============================================================
+#  CONFIGURACIÓN — Cambia estos valores según tu red
+# ============================================================
+
+# --- Velocidad de Internet (Mbps) ---
+LINE_SPEED_DOWN=150        # Mbps contratados de bajada
+LINE_SPEED_UP=20           # Mbps contratados de subida
+SQM_PERCENT=90             # % de la velocidad real para SQM (85-95)
+
+# --- DNS ---
+DNS_PRIMARY="1.1.1.3"     # Cloudflare Family (bloquea malware+adultos)
+DNS_SECONDARY="1.0.0.3"   # Cloudflare Family (secundario)
+DNS_FALLBACK1="8.8.8.8"   # Google (fallback)
+DNS_FALLBACK2="8.8.4.4"   # Google (fallback 2)
+DNS_CACHESIZE=4096         # Entradas en cache DNS
+DNS_FORWARDMAX=512         # Consultas DNS simultáneas máximas
+DNS_MAX_CACHE_TTL=3600     # TTL máximo de cache (segundos)
+DNS_MIN_CACHE_TTL=300      # TTL mínimo de cache (segundos)
+
+# --- DNS-over-HTTPS (DoH) ---
+DOH_CF_URL="https://family.cloudflare-dns.com/dns-query"
+DOH_GOOGLE_URL="https://dns.google/dns-query"
+DOH_BOOTSTRAP_CF="1.1.1.3,1.0.0.3"
+DOH_BOOTSTRAP_GOOGLE="8.8.8.8,8.8.4.4"
+DOH_CF_PORT=5053
+DOH_GOOGLE_PORT=5054
+
+# --- WiFi Principal ---
+WIFI_PASS="123456789000"   # Contraseña WPA2/WPA3
+WIFI_SSID_24="CRISEGO"     # Nombre red 2.4GHz
+WIFI_SSID_5G="CRISEGO-5G"  # Nombre red 5GHz
+
+# --- WiFi Invitados ---
+GUEST_SSID="CRISEGO-INVITADOS"
+GUEST_IP="192.168.3.1"     # IP del router en red guest
+GUEST_MASK="255.255.255.0"
+GUEST_DHCP_START=100
+GUEST_DHCP_LIMIT=150
+GUEST_DHCP_LEASE="2h"
+GUEST_SPEED_KBPS=5000       # Límite ancho de banda invitados (kbps)
+GUEST_TIMEOUT_SEC=3600      # 1 hora de navegación (segundos)
+GUEST_COOLDOWN_SEC=21600    # 6 horas entre sesiones (segundos)
+GUEST_SESSION_MIN=60        # Timeout de sesión nodogsplash (minutos)
+
+# --- SQM (Smart Queue Management) ---
+SQM_OVERHEAD=22             # Overhead DOCSIS coaxial (bytes)
+SQM_TC_MTU=1518             # MTU máximo para cálculos
+SQM_TSIZE=128               # Entradas en tabla de rate
+SQM_MPU=64                  # Tamaño mínimo de paquete
+
+# --- Listas de bloqueo ---
+BLOCKLIST_URL="https://raw.githubusercontent.com/emiliodallatorre/adult-hosts-list/refs/heads/main/list.txt"
+ADLIST_URL="https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
+
+# --- NTP ---
+NTP_SERVER_1="0.openwrt.pool.ntp.org"
+NTP_SERVER_2="1.openwrt.pool.ntp.org"
+
+# --- Red (auto-detectado, respaldo) ---
+WAN_IF_FALLBACK="eth0.2"    # Solo si no se detecta automáticamente
+
+# ============================================================
+
 LOG="/tmp/openwrt_setup.log"
 exec > >(tee -a "$LOG") 2>&1
 
@@ -120,10 +183,10 @@ uci delete dhcp.@dnsmasq[0].server 2>/dev/null
 #   (Google no tiene DNS de familia separado;
 #    SafeSearch se refuerza vía dnsmasq más abajo)
 # -------------------------------------------------------
-uci add_list dhcp.@dnsmasq[0].server="1.1.1.3"       # Cloudflare Family (primario)
-uci add_list dhcp.@dnsmasq[0].server="1.0.0.3"       # Cloudflare Family (secundario)
-uci add_list dhcp.@dnsmasq[0].server="8.8.8.8"       # Google DNS (fallback)
-uci add_list dhcp.@dnsmasq[0].server="8.8.4.4"       # Google DNS (fallback 2)
+uci add_list dhcp.@dnsmasq[0].server="${DNS_PRIMARY}"       # Cloudflare Family (primario)
+uci add_list dhcp.@dnsmasq[0].server="${DNS_SECONDARY}"   # Cloudflare Family (secundario)
+uci add_list dhcp.@dnsmasq[0].server="${DNS_FALLBACK1}"   # Google DNS (fallback)
+uci add_list dhcp.@dnsmasq[0].server="${DNS_FALLBACK2}"   # Google DNS (fallback 2)
 
 # --- Deshabilitar DNS del ISP, forzar nuestros DNS ---
 uci set dhcp.@dnsmasq[0].noresolv="1"
@@ -136,17 +199,17 @@ uci set dhcp.@dnsmasq[0].rebind_localhost="1"
 uci set dhcp.@dnsmasq[0].local="/lan/"
 uci set dhcp.@dnsmasq[0].expandhosts="1"
 uci set dhcp.@dnsmasq[0].nonegcache="0"
-uci set dhcp.@dnsmasq[0].cachesize="4096"
-uci set dhcp.@dnsmasq[0].dnsforwardmax="512"
+uci set dhcp.@dnsmasq[0].cachesize="${DNS_CACHESIZE}"
+uci set dhcp.@dnsmasq[0].dnsforwardmax="${DNS_FORWARDMAX}"
 uci set dhcp.@dnsmasq[0].readethers="1"
 uci set dhcp.@dnsmasq[0].leasefile="/tmp/dhcp.leases"
 
 # --- Forzar SafeSearch en Google, YouTube, Bing ---
 mkdir -p /etc/dnsmasq.d
-cat > /etc/dnsmasq.d/safesearch.conf << 'EOF'
+cat > /etc/dnsmasq.d/safesearch.conf << EOF
 # ---- Cache tuning ----
-max-cache-ttl=3600
-min-cache-ttl=300
+max-cache-ttl=${DNS_MAX_CACHE_TTL}
+min-cache-ttl=${DNS_MIN_CACHE_TTL}
 
 # ---- Forzar SafeSearch Google ----
 address=/forcesafesearch.google.com/216.239.38.120
@@ -168,7 +231,6 @@ cname=www.youtube-nocookie.com,restrict.youtube.com
 EOF
 
 # --- Bloquear dominios adultos desde lista remota ---
-BLOCKLIST_URL="https://raw.githubusercontent.com/emiliodallatorre/adult-hosts-list/refs/heads/main/list.txt"
 info "Descargando lista de bloqueo adulto desde GitHub..."
 if command -v curl >/dev/null 2>&1; then
     curl -sL --connect-timeout 10 --max-time 30 "$BLOCKLIST_URL" 2>/dev/null | \
@@ -198,7 +260,6 @@ ok "DNS configurado: Cloudflare Family + Google + SafeSearch activo."
 step "PASO 4/9 · Bloqueo de Anuncios y Rastreadores"
 
 # --- Descargar lista de anuncios/malware/tracking (StevenBlack) ---
-ADLIST_URL="https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
 info "Descargando lista de anuncios y rastreadores..."
 cat > /etc/dnsmasq.d/adblock.conf << 'EOF'
 # ---- Bloqueo de anuncios y rastreadores ----
@@ -230,7 +291,7 @@ RADIOS=$(uci show wireless | grep "=wifi-device" | cut -d. -f2 | cut -d= -f1)
 if [ -z "$RADIOS" ]; then
     warn "No se detectaron interfaces WiFi. Saltando configuración."
 else
-    WIFI_PASS="123456789000"
+    WIFI_PASS="${WIFI_PASS}"
     RADIO_COUNT=0
 
     for RADIO in $RADIOS; do
@@ -248,8 +309,8 @@ else
 
         # Asignar SSID según banda
         case "$BAND" in
-            5g|5GHz|5) SSID="CRISEGO-5G" ;;
-            *)          SSID="CRISEGO" ;;
+            5g|5GHz|5) SSID="${WIFI_SSID_5G}" ;;
+            *)          SSID="${WIFI_SSID_24}" ;;
         esac
 
         # Buscar wifi-iface existente para esta radio
@@ -273,9 +334,9 @@ else
 
     # --- Red invitados (abierta, aislada) ---
     GUEST_NET="guest"
-    GUEST_IP="192.168.3.1"
-    GUEST_MASK="255.255.255.0"
-    GUEST_SSID="CRISEGO-INVITADOS"
+    GUEST_IP="${GUEST_IP}"
+    GUEST_MASK="${GUEST_MASK}"
+    GUEST_SSID="${GUEST_SSID}"
 
     # Usar el primer radio para invitados
     FIRST_RADIO=$(echo "$RADIOS" | awk '{print $1}')
@@ -291,9 +352,9 @@ else
     uci delete dhcp.${GUEST_NET} 2>/dev/null
     uci set dhcp.${GUEST_NET}=dhcp
     uci set dhcp.${GUEST_NET}.interface="${GUEST_NET}"
-    uci set dhcp.${GUEST_NET}.start="100"
-    uci set dhcp.${GUEST_NET}.limit="150"
-    uci set dhcp.${GUEST_NET}.leasetime="2h"
+    uci set dhcp.${GUEST_NET}.start="${GUEST_DHCP_START}"
+    uci set dhcp.${GUEST_NET}.limit="${GUEST_DHCP_LIMIT}"
+    uci set dhcp.${GUEST_NET}.leasetime="${GUEST_DHCP_LEASE}"
 
     # WiFi invitados
     uci delete wireless.${GUEST_NET} 2>/dev/null
@@ -368,7 +429,7 @@ else
     /etc/init.d/dnsmasq restart
     /etc/init.d/firewall reload
 
-    ok "WiFi principal CRISEGO / CRISEGO-5G + invitados '${GUEST_SSID}' configurados."
+    ok "WiFi principal ${WIFI_SSID_24} / ${WIFI_SSID_5G} + invitados '${GUEST_SSID}' configurados."
     warn "Red invitados SIN contraseña. Agrega clave desde LuCI si lo deseas."
 
     # --- Portal Cautivo: 1h cada 6h ---
@@ -381,7 +442,7 @@ else
         info "Portal cautivo en interfaz: ${GUEST_IF}"
 
         # Script de control de tiempo por MAC
-        cat > /usr/bin/guest-auth.sh << 'AUTH_EOF'
+        cat > /usr/bin/guest-auth.sh << AUTH_EOF
 #!/bin/sh
 # BinAuth: $0 auth_client <mac> <user> <pass>
 METHOD="$1"
@@ -396,13 +457,13 @@ if [ "$METHOD" != "auth_client" ]; then
 fi
 
 LAST=$(grep "^${MAC} " "$SESSION_FILE" 2>/dev/null | awk '{print $2}')
-COOLDOWN=21600
+COOLDOWN=${GUEST_COOLDOWN_SEC}
 
 if [ -z "$LAST" ] || [ $((NOW - LAST)) -ge $COOLDOWN ]; then
     grep -v "^${MAC} " "$SESSION_FILE" > /tmp/guest_tmp 2>/dev/null
     echo "${MAC} ${NOW}" >> /tmp/guest_tmp
     mv /tmp/guest_tmp "$SESSION_FILE"
-    echo "3600 0 0"
+    echo "${GUEST_TIMEOUT_SEC} 0 0"
     exit 0
 else
     echo "0 0 0"
@@ -416,9 +477,9 @@ AUTH_EOF
         cat > /etc/nodogsplash/nodogsplash.conf << NDS_EOF
 GatewayInterface ${GUEST_IF}
 GatewayAddress 192.168.3.1
-GatewayName CRISEGO-INVITADOS
+GatewayName ${GUEST_SSID}
 MaxClients 50
-SessionTimeout 60
+SessionTimeout ${GUEST_SESSION_MIN}
 BinAuth /usr/bin/guest-auth.sh
 
 FirewallRuleSet authenticated-users {
@@ -485,7 +546,8 @@ p { color: #a0a0b0; font-size: .9rem; margin-bottom: 1.5rem; }
 </html>
 HTML_EOF
 
-        # Activar (matar instancias previas primero)
+        # Activar (limpiar sesiones previas y matar instancias viejas)
+        rm -f /tmp/guest_sessions.txt
         killall nodogsplash 2>/dev/null
         sleep 1
         /etc/init.d/nodogsplash enable 2>/dev/null
@@ -510,7 +572,7 @@ if ntpctl -s status 2>/dev/null | grep -qi 'synced\|peer'; then
     ok "Hora sincronizada: $(date '+%Y-%m-%d %H:%M:%S')"
 else
     warn "Reloj no sincronizado. Forzando sincronización NTP..."
-    ntpd -q -p 0.openwrt.pool.ntp.org -p 1.openwrt.pool.ntp.org 2>/dev/null && \
+    ntpd -q -p ${NTP_SERVER_1} -p ${NTP_SERVER_2} 2>/dev/null && \
         ok "Hora sincronizada: $(date '+%Y-%m-%d %H:%M:%S')" || \
         warn "No se pudo sincronizar. DoH puede fallar si el reloj está muy desfasado."
 fi
@@ -522,20 +584,20 @@ if [ -f /etc/config/https-dns-proxy ]; then
 
     # Instancia 1: Cloudflare Family DoH
     uci add https-dns-proxy https-dns-proxy
-    uci set https-dns-proxy.@https-dns-proxy[0].bootstrap_dns="1.1.1.3,1.0.0.3"
-    uci set https-dns-proxy.@https-dns-proxy[0].resolver_url="https://family.cloudflare-dns.com/dns-query"
+    uci set https-dns-proxy.@https-dns-proxy[0].bootstrap_dns="${DOH_BOOTSTRAP_CF}"
+    uci set https-dns-proxy.@https-dns-proxy[0].resolver_url="${DOH_CF_URL}"
     uci set https-dns-proxy.@https-dns-proxy[0].listen_addr="127.0.0.1"
-    uci set https-dns-proxy.@https-dns-proxy[0].listen_port="5053"
+    uci set https-dns-proxy.@https-dns-proxy[0].listen_port="${DOH_CF_PORT}"
     uci set https-dns-proxy.@https-dns-proxy[0].user="nobody"
     uci set https-dns-proxy.@https-dns-proxy[0].group="nogroup"
     uci set https-dns-proxy.@https-dns-proxy[0].logfile="/tmp/https-dns-proxy.log"
 
     # Instancia 2: Google DoH (fallback)
     uci add https-dns-proxy https-dns-proxy
-    uci set https-dns-proxy.@https-dns-proxy[1].bootstrap_dns="8.8.8.8,8.8.4.4"
-    uci set https-dns-proxy.@https-dns-proxy[1].resolver_url="https://dns.google/dns-query"
+    uci set https-dns-proxy.@https-dns-proxy[1].bootstrap_dns="${DOH_BOOTSTRAP_GOOGLE}"
+    uci set https-dns-proxy.@https-dns-proxy[1].resolver_url="${DOH_GOOGLE_URL}"
     uci set https-dns-proxy.@https-dns-proxy[1].listen_addr="127.0.0.1"
-    uci set https-dns-proxy.@https-dns-proxy[1].listen_port="5054"
+    uci set https-dns-proxy.@https-dns-proxy[1].listen_port="${DOH_GOOGLE_PORT}"
     uci set https-dns-proxy.@https-dns-proxy[1].user="nobody"
     uci set https-dns-proxy.@https-dns-proxy[1].group="nogroup"
 
@@ -565,7 +627,7 @@ WAN_IF=$(uci get network.wan.ifname 2>/dev/null || \
          ip route show default | awk '/default/{print $5}' | head -1)
 
 if [ -z "$WAN_IF" ]; then
-    WAN_IF="eth0.2"   # Valor por defecto común en OpenWrt
+    WAN_IF="${WAN_IF_FALLBACK}"   # Valor por defecto común en OpenWrt
     warn "Interfaz WAN no detectada, usando: $WAN_IF"
     warn "Edita WAN_IF en este script si es incorrecta."
 else
@@ -577,11 +639,8 @@ fi
 # Se recomienda 85-95% de la velocidad contratada para
 # dar margen al overhead de coaxial/DOCSIS
 #
-# Bajada: 150000 kbps × 0.90 = 135000 kbps
-# Subida:  20000 kbps × 0.90 =  18000 kbps
-# -------------------------------------------------------
-DOWNLOAD_KBPS=135000   # 90% de 150 Mbps
-UPLOAD_KBPS=18000      # 90% de 20 Mbps
+DOWNLOAD_KBPS=$(( LINE_SPEED_DOWN * 1000 * SQM_PERCENT / 100 ))
+UPLOAD_KBPS=$(( LINE_SPEED_UP * 1000 * SQM_PERCENT / 100 ))
 
 # Limpiar instancias SQM previas
 while uci delete sqm.@queue[0] 2>/dev/null; do :; done
@@ -607,11 +666,11 @@ uci set sqm.@queue[0].script="piece_of_cake.qos"
 
 # Overhead coaxial/DOCSIS — valor típico: 18-22 bytes
 uci set sqm.@queue[0].linklayer="ethernet"
-uci set sqm.@queue[0].overhead="22"
+uci set sqm.@queue[0].overhead="${SQM_OVERHEAD}"
 uci set sqm.@queue[0].linklayer_advanced="1"
-uci set sqm.@queue[0].tcMTU="1518"
-uci set sqm.@queue[0].tsize="128"
-uci set sqm.@queue[0].mpu="64"
+uci set sqm.@queue[0].tcMTU="${SQM_TC_MTU}"
+uci set sqm.@queue[0].tsize="${SQM_TSIZE}"
+uci set sqm.@queue[0].mpu="${SQM_MPU}"
 uci set sqm.@queue[0].linklayer_adapt_mechanism="default"
 
 # Opciones avanzadas CAKE
@@ -649,10 +708,10 @@ if uci get network.guest >/dev/null 2>&1; then
         uci set sqm.@queue[${GUEST_IDX}].upload="1500"
         uci set sqm.@queue[${GUEST_IDX}].qdisc="cake"
         uci set sqm.@queue[${GUEST_IDX}].script="piece_of_cake.qos"
-        uci set sqm.@queue[${GUEST_IDX}].qdisc_options="bandwidth 5000kbit nat dual-dsthost"
+        uci set sqm.@queue[${GUEST_IDX}].qdisc_options="bandwidth ${GUEST_SPEED_KBPS}kbit nat dual-dsthost"
         uci commit sqm
         /etc/init.d/sqm restart
-        ok "SQM invitados: 5 Mbps en ${GUEST_DEVICE}."
+        ok "SQM invitados: $(($GUEST_SPEED_KBPS / 1000)) Mbps en ${GUEST_DEVICE}."
     else
         warn "Interfaz guest no disponible aún. SQM invitados se aplicará al reiniciar."
         # Crear entrada de todas formas para que SQM la tome luego
@@ -661,11 +720,11 @@ if uci get network.guest >/dev/null 2>&1; then
         GUEST_IDX=$((GUEST_IDX - 1))
         uci set sqm.@queue[${GUEST_IDX}].interface="guest"
         uci set sqm.@queue[${GUEST_IDX}].enabled="1"
-        uci set sqm.@queue[${GUEST_IDX}].download="5000"
-        uci set sqm.@queue[${GUEST_IDX}].upload="5000"
+        uci set sqm.@queue[${GUEST_IDX}].download="${GUEST_SPEED_KBPS}"
+        uci set sqm.@queue[${GUEST_IDX}].upload="${GUEST_SPEED_KBPS}"
         uci set sqm.@queue[${GUEST_IDX}].qdisc="cake"
         uci set sqm.@queue[${GUEST_IDX}].script="piece_of_cake.qos"
-        uci set sqm.@queue[${GUEST_IDX}].qdisc_options="bandwidth 5000kbit nat dual-dsthost"
+        uci set sqm.@queue[${GUEST_IDX}].qdisc_options="bandwidth ${GUEST_SPEED_KBPS}kbit nat dual-dsthost"
         uci commit sqm
     fi
 else
@@ -825,17 +884,17 @@ echo "  ╔═══════════════════════
 echo "  ║      CONFIGURACIÓN COMPLETADA EXITOSAMENTE            ║"
 echo "  ╚════════════════════════════════════════════════════════╝"
 printf "${NC}\n"
-printf "  ${CYAN}DNS Primario${NC}  : 1.1.1.3 (Cloudflare Family — bloquea adultos)\n"
-printf "  ${CYAN}DNS Secundario${NC}: 1.0.0.3 (Cloudflare Family)\n"
-printf "  ${CYAN}DNS Fallback${NC}  : 8.8.8.8 / 8.8.4.4 (Google)\n"
+printf "  ${CYAN}DNS Primario${NC}  : ${DNS_PRIMARY} (Cloudflare Family — bloquea adultos)\n"
+printf "  ${CYAN}DNS Secundario${NC}: ${DNS_SECONDARY} (Cloudflare Family)\n"
+printf "  ${CYAN}DNS Fallback${NC}  : ${DNS_FALLBACK1} / ${DNS_FALLBACK2} (Google)\n"
 printf "  ${CYAN}DoH${NC}           : family.cloudflare-dns.com + dns.google\n"
 printf "  ${CYAN}SafeSearch${NC}    : Google, Bing, YouTube (modo restringido)\n"
 echo ""
 printf "  ${CYAN}SQM Algoritmo${NC} : CAKE (óptimo para coaxial/DOCSIS)\n"
 printf "  ${CYAN}Interfaz WAN${NC}  : ${WAN_IF}\n"
-printf "  ${CYAN}Bajada SQM${NC}    : ${DOWNLOAD_KBPS} kbps (90%% de 150 Mbps)\n"
-printf "  ${CYAN}Subida SQM${NC}    : ${UPLOAD_KBPS} kbps  (90%% de 20 Mbps)\n"
-printf "  ${CYAN}Overhead${NC}      : 22 bytes (DOCSIS coaxial)\n"
+printf "  ${CYAN}Bajada SQM${NC}    : ${DOWNLOAD_KBPS} kbps (${SQM_PERCENT}%% de ${LINE_SPEED_DOWN} Mbps)\n"
+printf "  ${CYAN}Subida SQM${NC}    : ${UPLOAD_KBPS} kbps  (${SQM_PERCENT}%% de ${LINE_SPEED_UP} Mbps)\n"
+printf "  ${CYAN}Overhead${NC}      : ${SQM_OVERHEAD} bytes (DOCSIS coaxial)\n"
 echo ""
 printf "  ${CYAN}Log${NC} guardado en: ${LOG}\n"
 echo ""
