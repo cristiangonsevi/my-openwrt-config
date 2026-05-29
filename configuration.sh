@@ -141,24 +141,20 @@ cname=youtubei.googleapis.com,restrict.youtube.com
 cname=youtube.googleapis.com,restrict.youtube.com
 cname=www.youtube-nocookie.com,restrict.youtube.com
 
-# ---- Bloquear dominios adultos conocidos ----
-address=/xvideos.com/#
-address=/pornhub.com/#
-address=/xnxx.com/#
-address=/xhamster.com/#
-address=/redtube.com/#
-address=/youporn.com/#
-address=/tube8.com/#
-address=/spankbang.com/#
-address=/chaturbate.com/#
-address=/livejasmin.com/#
-address=/brazzers.com/#
-address=/onlyfans.com/#
-address=/rule34.xxx/#
-address=/e621.net/#
-address=/nhentai.net/#
-
 EOF
+
+# --- Bloquear dominios adultos desde lista remota ---
+BLOCKLIST_URL="https://raw.githubusercontent.com/emiliodallatorre/adult-hosts-list/refs/heads/main/list.txt"
+info "Descargando lista de bloqueo adulto desde GitHub..."
+if command -v curl >/dev/null 2>&1; then
+    curl -sL --connect-timeout 10 --max-time 30 "$BLOCKLIST_URL" 2>/dev/null | \
+        sed -n 's/^\([^#[:space:]].*\)/address=\/\1\/#/p' >> /etc/dnsmasq.d/safesearch.conf
+elif command -v wget >/dev/null 2>&1; then
+    wget -qO- --timeout=10 --tries=1 "$BLOCKLIST_URL" 2>/dev/null | \
+        sed -n 's/^\([^#[:space:]].*\)/address=\/\1\/#/p' >> /etc/dnsmasq.d/safesearch.conf
+fi
+BLOCKED=$(grep -c 'address=/' /etc/dnsmasq.d/safesearch.conf 2>/dev/null || echo "0")
+ok "Lista de bloqueo cargada: ${BLOCKED} dominios bloqueados."
 
 uci commit dhcp
 /etc/init.d/dnsmasq restart
