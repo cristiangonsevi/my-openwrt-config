@@ -345,6 +345,15 @@ else
     uci set firewall.${GUEST_NET}_block_lan.dest="lan"
     uci set firewall.${GUEST_NET}_block_lan.target="REJECT"
 
+    # Permitir acceso al portal cautivo (puerto 2050)
+    uci delete firewall.${GUEST_NET}_portal 2>/dev/null
+    uci set firewall.${GUEST_NET}_portal=rule
+    uci set firewall.${GUEST_NET}_portal.name="Guest-Portal"
+    uci set firewall.${GUEST_NET}_portal.src="${GUEST_NET}"
+    uci set firewall.${GUEST_NET}_portal.proto="tcp"
+    uci set firewall.${GUEST_NET}_portal.dest_port="2050"
+    uci set firewall.${GUEST_NET}_portal.target="ACCEPT"
+
     uci commit network
     uci commit dhcp
     uci commit wireless
