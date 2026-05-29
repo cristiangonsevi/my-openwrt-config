@@ -85,9 +85,9 @@ GUEST_DHCP_START=100
 GUEST_DHCP_LIMIT=150
 GUEST_DHCP_LEASE="2h"
 GUEST_SPEED_KBPS=5000       # Límite ancho de banda invitados (kbps)
-GUEST_TIMEOUT_SEC=60      # 1 hora de navegación (segundos)
-GUEST_COOLDOWN_SEC=21600    # 6 horas entre sesiones (segundos)
-GUEST_SESSION_MIN=1       # Timeout de sesión nodogsplash (minutos)
+GUEST_TIMEOUT_SEC=3600      # 1 hora de navegación (segundos)
+GUEST_COOLDOWN_SEC=900    # 6 horas entre sesiones (segundos)
+GUEST_SESSION_MIN=60     # Timeout de sesión nodogsplash (minutos)
 
 # --- SQM (Smart Queue Management) ---
 SQM_OVERHEAD=22             # Overhead DOCSIS coaxial (bytes)
