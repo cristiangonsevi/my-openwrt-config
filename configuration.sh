@@ -68,7 +68,7 @@ fi
 # ============================================================
 # 0. ELIMINAR PAQUETES CONFLICTIVOS
 # ============================================================
-step "PASO 1/8 · Limpiar Paquetes Conflictivos"
+step "PASO 1/9 · Limpiar Paquetes Conflictivos"
 
 info "Eliminando paquetes que entran en conflicto con esta config..."
 for pkg in adblock-fast luci-app-adblock-fast family-dns safe-search; do
@@ -81,7 +81,7 @@ ok "Paquetes conflictivos eliminados."
 # ============================================================
 # 1. ACTUALIZAR PAQUETES E INSTALAR DEPENDENCIAS
 # ============================================================
-step "PASO 2/8 · Paquetes y Dependencias"
+step "PASO 2/9 · Paquetes y Dependencias"
 
 apk update
 
@@ -96,7 +96,7 @@ apk add irqbalance kmod-nf-conntrack kmod-tcp-bbr 2>/dev/null
 
 ok "Dependencias instaladas."
 
-step "PASO 3/8 · DNS — Cloudflare + Google + Filtrado"
+step "PASO 3/9 · DNS — Cloudflare + Google + Filtrado"
 
 # --- Respaldo de configuración actual ---
 cp /etc/config/dhcp /etc/config/dhcp.bak 2>/dev/null
@@ -188,7 +188,7 @@ uci commit dhcp
 
 ok "DNS configurado: Cloudflare Family + Google + SafeSearch activo."
 
-step "PASO 4/8 · Bloqueo de Anuncios y Rastreadores"
+step "PASO 4/9 · Bloqueo de Anuncios y Rastreadores"
 
 # --- Descargar lista de anuncios/malware/tracking (StevenBlack) ---
 ADLIST_URL="https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
@@ -216,7 +216,142 @@ warn "Si algunos sitios no cargan, revisa /etc/dnsmasq.d/adblock.conf"
 # Recargar dnsmasq para aplicar bloqueo de anuncios
 /etc/init.d/dnsmasq restart
 
-step "PASO 5/8 · DNS-over-HTTPS (DoH)"
+step "PASO 5/9 · WiFi — Principal + Invitados"
+
+# --- Detectar radios WiFi disponibles ---
+RADIOS=$(uci show wireless | grep "=wifi-device" | cut -d. -f2 | cut -d= -f1)
+if [ -z "$RADIOS" ]; then
+    warn "No se detectaron interfaces WiFi. Saltando configuración."
+else
+    WIFI_PASS="123456789000"
+    RADIO_COUNT=0
+
+    for RADIO in $RADIOS; do
+        RADIO_COUNT=$((RADIO_COUNT + 1))
+
+        # Detectar banda (por band o por canal)
+        BAND=$(uci get wireless.${RADIO}.band 2>/dev/null)
+        CHANNEL=$(uci get wireless.${RADIO}.channel 2>/dev/null)
+        [ -z "$BAND" ] && {
+            case "$CHANNEL" in
+                [1-9]|1[0-4]) BAND="2g" ;;
+                3[6-9]|[4-9][0-9]|[1-9][0-9][0-9]) BAND="5g" ;;
+            esac
+        }
+
+        # Asignar SSID según banda
+        case "$BAND" in
+            5g|5GHz|5) SSID="CRISEGO-5G" ;;
+            *)          SSID="CRISEGO" ;;
+        esac
+
+        # Buscar wifi-iface existente para esta radio
+        IFACE=$(uci show wireless | grep "wifi-iface" | grep "device='${RADIO}'" | head -1 | cut -d. -f2 | cut -d= -f1)
+        if [ -z "$IFACE" ]; then
+            # Si no hay AP principal, crear uno
+            IFACE="main_${RADIO}"
+            uci delete wireless.${IFACE} 2>/dev/null
+            uci set wireless.${IFACE}=wifi-iface
+            uci set wireless.${IFACE}.device="${RADIO}"
+            uci set wireless.${IFACE}.mode="ap"
+        fi
+
+        uci set wireless.${IFACE}.ssid="${SSID}"
+        uci set wireless.${IFACE}.encryption="sae-mixed"
+        uci set wireless.${IFACE}.key="${WIFI_PASS}"
+        uci set wireless.${IFACE}.network="lan"
+
+        info "WiFi ${SSID} configurado en ${RADIO} (WPA2)."
+    done
+
+    # --- Red invitados (abierta, aislada) ---
+    GUEST_NET="guest"
+    GUEST_IP="192.168.3.1"
+    GUEST_MASK="255.255.255.0"
+    GUEST_SSID="Invitados"
+
+    # Usar el primer radio para invitados
+    FIRST_RADIO=$(echo "$RADIOS" | awk '{print $1}')
+
+    # Red
+    uci delete network.${GUEST_NET} 2>/dev/null
+    uci set network.${GUEST_NET}=interface
+    uci set network.${GUEST_NET}.proto="static"
+    uci set network.${GUEST_NET}.ipaddr="${GUEST_IP}"
+    uci set network.${GUEST_NET}.netmask="${GUEST_MASK}"
+
+    # DHCP para invitados
+    uci delete dhcp.${GUEST_NET} 2>/dev/null
+    uci set dhcp.${GUEST_NET}=dhcp
+    uci set dhcp.${GUEST_NET}.interface="${GUEST_NET}"
+    uci set dhcp.${GUEST_NET}.start="100"
+    uci set dhcp.${GUEST_NET}.limit="150"
+    uci set dhcp.${GUEST_NET}.leasetime="2h"
+
+    # WiFi invitados
+    uci delete wireless.${GUEST_NET} 2>/dev/null
+    uci set wireless.${GUEST_NET}=wifi-iface
+    uci set wireless.${GUEST_NET}.device="${FIRST_RADIO}"
+    uci set wireless.${GUEST_NET}.mode="ap"
+    uci set wireless.${GUEST_NET}.ssid="${GUEST_SSID}"
+    uci set wireless.${GUEST_NET}.network="${GUEST_NET}"
+    uci set wireless.${GUEST_NET}.encryption="none"
+    uci set wireless.${GUEST_NET}.isolate="1"
+
+    # Firewall: zona invitados (Internet sí, LAN no)
+    uci delete firewall.${GUEST_NET} 2>/dev/null
+    uci set firewall.${GUEST_NET}=zone
+    uci set firewall.${GUEST_NET}.name="${GUEST_NET}"
+    uci set firewall.${GUEST_NET}.network="${GUEST_NET}"
+    uci set firewall.${GUEST_NET}.input="REJECT"
+    uci set firewall.${GUEST_NET}.forward="REJECT"
+    uci set firewall.${GUEST_NET}.output="ACCEPT"
+
+    # Reglas: DNS + DHCP al router
+    uci delete firewall.${GUEST_NET}_dns 2>/dev/null
+    uci set firewall.${GUEST_NET}_dns=rule
+    uci set firewall.${GUEST_NET}_dns.name="Guest-DNS"
+    uci set firewall.${GUEST_NET}_dns.src="${GUEST_NET}"
+    uci set firewall.${GUEST_NET}_dns.dest_port="53"
+    uci set firewall.${GUEST_NET}_dns.proto="udp"
+    uci set firewall.${GUEST_NET}_dns.target="ACCEPT"
+
+    uci delete firewall.${GUEST_NET}_dhcp 2>/dev/null
+    uci set firewall.${GUEST_NET}_dhcp=rule
+    uci set firewall.${GUEST_NET}_dhcp.name="Guest-DHCP"
+    uci set firewall.${GUEST_NET}_dhcp.src="${GUEST_NET}"
+    uci set firewall.${GUEST_NET}_dhcp.dest_port="67-68"
+    uci set firewall.${GUEST_NET}_dhcp.proto="udp"
+    uci set firewall.${GUEST_NET}_dhcp.target="ACCEPT"
+
+    # Forward: invitados → WAN (Internet)
+    uci delete firewall.${GUEST_NET}_wan 2>/dev/null
+    uci set firewall.${GUEST_NET}_wan=forwarding
+    uci set firewall.${GUEST_NET}_wan.src="${GUEST_NET}"
+    uci set firewall.${GUEST_NET}_wan.dest="wan"
+
+    # Bloquear invitados → LAN
+    uci delete firewall.${GUEST_NET}_block_lan 2>/dev/null
+    uci set firewall.${GUEST_NET}_block_lan=rule
+    uci set firewall.${GUEST_NET}_block_lan.name="Guest-Block-LAN"
+    uci set firewall.${GUEST_NET}_block_lan.src="${GUEST_NET}"
+    uci set firewall.${GUEST_NET}_block_lan.dest="lan"
+    uci set firewall.${GUEST_NET}_block_lan.target="REJECT"
+
+    uci commit network
+    uci commit dhcp
+    uci commit wireless
+    uci commit firewall
+
+    /etc/init.d/network reload
+    /etc/init.d/dnsmasq restart
+    /etc/init.d/firewall reload
+
+    ok "WiFi principal CRISEGO / CRISEGO-5G + invitados '${GUEST_SSID}' configurados."
+    warn "Red invitados SIN contraseña. Agrega clave desde LuCI si lo deseas."
+fi
+
+step "PASO 6/9 · DNS-over-HTTPS (DoH)"
 
 # --- Verificar sincronización de hora (TLS/DoH lo necesita) ---
 info "Verificando sincronización NTP..."
@@ -271,7 +406,7 @@ else
     warn "https-dns-proxy no instalado, usando DNS plano con filtrado."
 fi
 
-step "PASO 6/8 · SQM — Smart Queue Management"
+step "PASO 7/9 · SQM — Smart Queue Management"
 
 # Detectar interfaz WAN automáticamente
 WAN_IF=$(uci get network.wan.ifname 2>/dev/null || \
@@ -343,7 +478,27 @@ uci commit sqm
 
 ok "SQM CAKE configurado: ${DOWNLOAD_KBPS} kbps bajada / ${UPLOAD_KBPS} kbps subida."
 
-step "PASO 7/8 · Optimizaciones del Kernel y Sistema"
+# --- SQM para red de invitados (5 Mbps) ---
+if uci get network.guest >/dev/null 2>&1; then
+    GUEST_DEVICE=$(uci get network.guest.ifname 2>/dev/null)
+    [ -z "$GUEST_DEVICE" ] && GUEST_DEVICE="guest"
+
+    uci add sqm queue
+    uci set sqm.@queue[-1].interface="$GUEST_DEVICE"
+    uci set sqm.@queue[-1].enabled="1"
+    uci set sqm.@queue[-1].download="5000"
+    uci set sqm.@queue[-1].upload="5000"
+    uci set sqm.@queue[-1].qdisc="cake"
+    uci set sqm.@queue[-1].script="piece_of_cake.qos"
+    uci set sqm.@queue[-1].qdisc_options="bandwidth 5000kbit nat dual-dsthost"
+    uci commit sqm
+    /etc/init.d/sqm restart
+    ok "SQM invitados: 5 Mbps en ${GUEST_DEVICE}."
+else
+    info "Red de invitados no configurada. SQM invitados omitido."
+fi
+
+step "PASO 8/9 · Optimizaciones del Kernel y Sistema"
 
 # --- Sysctl: parámetros del kernel para mejor rendimiento ---
 cat > /etc/sysctl.d/99-openwrt-optimizations.conf << 'EOF'
@@ -441,7 +596,7 @@ ok "Optimizaciones del kernel aplicadas."
 # ============================================================
 # 8. VERIFICACIÓN FINAL
 # ============================================================
-step "PASO 8/8 · Verificación Final"
+step "PASO 9/9 · Verificación Final"
 
 # --- Verificar hora ---
 info "Verificando estado del sistema..."
