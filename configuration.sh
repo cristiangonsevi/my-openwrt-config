@@ -498,8 +498,8 @@ if uci get network.guest >/dev/null 2>&1; then
         GUEST_IDX=$((GUEST_IDX - 1))
         uci set sqm.@queue[${GUEST_IDX}].interface="$GUEST_DEVICE"
         uci set sqm.@queue[${GUEST_IDX}].enabled="1"
-        uci set sqm.@queue[${GUEST_IDX}].download="500"
-        uci set sqm.@queue[${GUEST_IDX}].upload="500"
+        uci set sqm.@queue[${GUEST_IDX}].download="1500"
+        uci set sqm.@queue[${GUEST_IDX}].upload="1500"
         uci set sqm.@queue[${GUEST_IDX}].qdisc="cake"
         uci set sqm.@queue[${GUEST_IDX}].script="piece_of_cake.qos"
         uci set sqm.@queue[${GUEST_IDX}].qdisc_options="bandwidth 5000kbit nat dual-dsthost"
@@ -582,6 +582,10 @@ if /etc/init.d/irqbalance start 2>/dev/null; then
     /etc/init.d/irqbalance enable
     ok "IRQ Balance activado."
 fi
+
+# --- Cargar módulos del kernel sin reiniciar ---
+modprobe tcp_bbr 2>/dev/null && info "Módulo BBR cargado."
+modprobe sch_cake 2>/dev/null
 
 # --- CPU Governor: forzar rendimiento máximo ---
 for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do

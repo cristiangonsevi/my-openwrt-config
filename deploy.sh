@@ -130,3 +130,19 @@ else
     warn "Terminó con código ${EXIT_CODE}. Revisa el log:"
     warn "  ssh root@${ROUTER_IP} 'cat /tmp/openwrt_setup.log'"
 fi
+
+# --- ¿Reiniciar router? ---
+echo ""
+printf "${YELLOW}¿Reiniciar el router ahora para aplicar módulos del kernel?${NC} [s/N]: "
+read -r REBOOT_ANS
+case "$REBOOT_ANS" in
+    [sS]|[sS][iI]|[yY]|[yY][eE][sS])
+        echo ""
+        printf "${BOLD}Reiniciando ${ROUTER_IP}...${NC}\n"
+        do_ssh "reboot" 2>/dev/null
+        ok "Router reiniciándose. Volverá en ~30 segundos."
+        ;;
+    *)
+        warn "No se reinició. Algunos cambios del kernel esperan al próximo reinicio."
+        ;;
+esac
