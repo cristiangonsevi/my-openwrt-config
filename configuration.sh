@@ -331,11 +331,16 @@ else
     uci set firewall.${GUEST_NET}_dhcp.proto="udp"
     uci set firewall.${GUEST_NET}_dhcp.target="ACCEPT"
 
-    # Forward: invitados → WAN (Internet)
+    # Forward: invitados → WAN (Internet) con NAT
     uci delete firewall.${GUEST_NET}_wan 2>/dev/null
     uci set firewall.${GUEST_NET}_wan=forwarding
     uci set firewall.${GUEST_NET}_wan.src="${GUEST_NET}"
     uci set firewall.${GUEST_NET}_wan.dest="wan"
+
+    # Asegurar que WAN hace masquerade para guest también
+    uci set firewall.wan.masq='1'
+    uci add_list firewall.wan.network='wan'
+    uci add_list firewall.wan.network='wan6'
 
     # Bloquear invitados → LAN
     uci delete firewall.${GUEST_NET}_block_lan 2>/dev/null
@@ -450,7 +455,7 @@ h1 { color: #e94560; font-size: 1.5rem; margin-bottom: .5rem; }
 p { color: #a0a0b0; font-size: .9rem; margin-bottom: 1.5rem; }
 .btn { display: block; width: 100%; padding: 14px; background: #e94560;
        color: #fff; border: none; border-radius: 10px; font-size: 1rem;
-       font-weight: bold; cursor: pointer; text-decoration: none; }
+       font-weight: bold; cursor: pointer; }
 .rules { background: #0f3460; border-radius: 10px; padding: 1rem;
          margin: 1.5rem 0; text-align: left; font-size: .8rem; line-height:1.6; }
 .rules li { margin: .3rem 0; }
@@ -469,14 +474,20 @@ p { color: #a0a0b0; font-size: .9rem; margin-bottom: 1.5rem; }
       <li>📶 Velocidad limitada a 5 Mbps</li>
     </ul>
   </div>
-  <a href="http://192.168.3.1:2050/nodogsplash_auth/" class="btn">Conectar a Internet</a>
+  <form method="GET" action="$authaction">
+    <input type="hidden" name="tok" value="$tok">
+    <input type="hidden" name="redir" value="$redir">
+    <button type="submit" class="btn">Conectar a Internet</button>
+  </form>
   <div class="footer">Powered by OpenWrt</div>
 </div>
 </body>
 </html>
 HTML_EOF
 
-        # Activar
+        # Activar (matar instancias previas primero)
+        killall nodogsplash 2>/dev/null
+        sleep 1
         /etc/init.d/nodogsplash enable 2>/dev/null
         /etc/init.d/nodogsplash restart 2>/dev/null
         sleep 2
