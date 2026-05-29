@@ -97,6 +97,9 @@ apk add irqbalance kmod-nf-conntrack kmod-tcp-bbr 2>/dev/null
 # Prerequisitos para el script (curl/wget para blocklists, bind para nslookup)
 apk add curl bind-client ethtool 2>/dev/null
 
+# Portal cautivo para invitados
+apk add nodogsplash 2>/dev/null
+
 ok "Dependencias instaladas."
 
 step "PASO 3/9 · DNS — Cloudflare + Google + Filtrado"
@@ -353,6 +356,119 @@ else
 
     ok "WiFi principal CRISEGO / CRISEGO-5G + invitados '${GUEST_SSID}' configurados."
     warn "Red invitados SIN contraseña. Agrega clave desde LuCI si lo deseas."
+
+    # --- Portal Cautivo: 1h cada 6h ---
+    if [ -x /usr/bin/nodogsplash ]; then
+        info "Configurando portal cautivo para invitados (1h / 6h)..."
+
+        # Detectar interfaz real de la red guest
+        GUEST_IF=$(ip -4 addr show | grep -B2 '192\.168\.3\.' | grep -oE '^[0-9]+: [^:@]+' | awk '{print $2}' | head -1)
+        [ -z "$GUEST_IF" ] && GUEST_IF="br-guest"
+        info "Portal cautivo en interfaz: ${GUEST_IF}"
+
+        # Script de control de tiempo por MAC
+        cat > /usr/bin/guest-auth.sh << 'AUTH_EOF'
+#!/bin/sh
+# BinAuth: $0 auth_client <mac> <user> <pass>
+METHOD="$1"
+MAC="$2"
+SESSION_FILE="/tmp/guest_sessions.txt"
+NOW=$(date +%s)
+touch "$SESSION_FILE"
+
+if [ "$METHOD" != "auth_client" ]; then
+    echo "0 0 0"
+    exit 0
+fi
+
+LAST=$(grep "^${MAC} " "$SESSION_FILE" 2>/dev/null | awk '{print $2}')
+COOLDOWN=21600
+
+if [ -z "$LAST" ] || [ $((NOW - LAST)) -ge $COOLDOWN ]; then
+    grep -v "^${MAC} " "$SESSION_FILE" > /tmp/guest_tmp 2>/dev/null
+    echo "${MAC} ${NOW}" >> /tmp/guest_tmp
+    mv /tmp/guest_tmp "$SESSION_FILE"
+    echo "3600 0 0"
+    exit 0
+else
+    echo "0 0 0"
+    exit 1
+fi
+AUTH_EOF
+        chmod +x /usr/bin/guest-auth.sh
+
+        # UCI config para nodogsplash (OpenWrt usa UCI, no .conf)
+        while uci delete nodogsplash.@nodogsplash[0] 2>/dev/null; do :; done
+        uci add nodogsplash nodogsplash
+        uci set nodogsplash.@nodogsplash[0].enabled='1'
+        uci set nodogsplash.@nodogsplash[0].gatewayinterface="$GUEST_IF"
+        uci set nodogsplash.@nodogsplash[0].gatewayaddress='192.168.3.1'
+        uci set nodogsplash.@nodogsplash[0].gatewayname='CRISEGO-INVITADOS'
+        uci set nodogsplash.@nodogsplash[0].maxclients='50'
+        uci set nodogsplash.@nodogsplash[0].sessiontimeout='60'
+        uci set nodogsplash.@nodogsplash[0].binauth='/usr/bin/guest-auth.sh'
+        uci add_list nodogsplash.@nodogsplash[0].users_to_router='allow tcp port 53'
+        uci add_list nodogsplash.@nodogsplash[0].users_to_router='allow udp port 53'
+        uci add_list nodogsplash.@nodogsplash[0].users_to_router='allow udp port 67'
+        uci commit nodogsplash
+
+        # Página splash
+        cat > /etc/nodogsplash/htdocs/splash.html << 'HTML_EOF'
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CRISEGO-INVITADOS</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee;
+       display:flex; justify-content:center; align-items:center; min-height:100vh; }
+.card { background: #16213e; border-radius: 16px; padding: 2rem;
+        max-width: 380px; width: 90%; text-align: center; box-shadow: 0 8px 32px rgba(0,0,0,.3); }
+h1 { color: #e94560; font-size: 1.5rem; margin-bottom: .5rem; }
+p { color: #a0a0b0; font-size: .9rem; margin-bottom: 1.5rem; }
+.btn { display: block; width: 100%; padding: 14px; background: #e94560;
+       color: #fff; border: none; border-radius: 10px; font-size: 1rem;
+       font-weight: bold; cursor: pointer; text-decoration: none; }
+.rules { background: #0f3460; border-radius: 10px; padding: 1rem;
+         margin: 1.5rem 0; text-align: left; font-size: .8rem; line-height:1.6; }
+.rules li { margin: .3rem 0; }
+.footer { font-size: .7rem; color: #555; margin-top: 1rem; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>CRISEGO-INVITADOS</h1>
+  <p>Acceso gratuito con límite de tiempo</p>
+  <div class="rules">
+    <ul>
+      <li>⏱ 1 hora de navegación</li>
+      <li>🔄 Se renueva cada 6 horas</li>
+      <li>🚫 Contenido adulto bloqueado</li>
+      <li>📶 Velocidad limitada a 5 Mbps</li>
+    </ul>
+  </div>
+  <a href="http://192.168.3.1:2050/nodogsplash_auth/" class="btn">Conectar a Internet</a>
+  <div class="footer">Powered by OpenWrt</div>
+</div>
+</body>
+</html>
+HTML_EOF
+
+        # Activar
+        /etc/init.d/nodogsplash enable 2>/dev/null
+        /etc/init.d/nodogsplash restart 2>/dev/null
+        sleep 2
+
+        if pgrep nodogsplash >/dev/null 2>&1; then
+            ok "Portal cautivo activo en ${GUEST_IF}: 1h cada 6h."
+        else
+            warn "nodogsplash no arrancó. Ejecuta: logread | grep nodogsplash"
+        fi
+    else
+        warn "nodogsplash no instalado. Portal cautivo omitido."
+    fi
 fi
 
 step "PASO 6/9 · DNS-over-HTTPS (DoH)"
