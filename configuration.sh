@@ -71,7 +71,7 @@ fi
 step "PASO 1/9 · Limpiar Paquetes Conflictivos"
 
 info "Eliminando paquetes que entran en conflicto con esta config..."
-for pkg in adblock-fast luci-app-adblock-fast family-dns safe-search; do
+for pkg in adblock-fast luci-app-adblock-fast luci-i18n-adblock-fast-es family-dns safe-search; do
     if apk info -e "$pkg" >/dev/null 2>&1; then
         apk del "$pkg" 2>/dev/null && info "Eliminado: $pkg"
     fi
@@ -202,14 +202,14 @@ cat > /etc/dnsmasq.d/adblock.conf << 'EOF'
 EOF
 
 if command -v curl >/dev/null 2>&1; then
-    curl -sL --connect-timeout 10 --max-time 60 "$ADLIST_URL" 2>/dev/null | \
+    curl -sL --connect-timeout 10 --max-time 90 "$ADLIST_URL" 2>/dev/null | \
         grep '^0\.0\.0\.0 ' | awk '{print $2}' | grep -v '^0\.0\.0\.0$' | \
-        grep -v '^#' | grep -v 'localhost$' | \
+        grep -v '^#' | grep -v 'localhost$' | grep -v 'local$' | \
         sed 's|.*|address=/&/#|' >> /etc/dnsmasq.d/adblock.conf
 elif command -v wget >/dev/null 2>&1; then
-    wget -qO- --timeout=10 --tries=1 "$ADLIST_URL" 2>/dev/null | \
+    wget -qO- --timeout=10 --tries=2 "$ADLIST_URL" 2>/dev/null | \
         grep '^0\.0\.0\.0 ' | awk '{print $2}' | grep -v '^0\.0\.0\.0$' | \
-        grep -v '^#' | grep -v 'localhost$' | \
+        grep -v '^#' | grep -v 'localhost$' | grep -v 'local$' | \
         sed 's|.*|address=/&/#|' >> /etc/dnsmasq.d/adblock.conf
 fi
 
@@ -272,7 +272,7 @@ else
     GUEST_NET="guest"
     GUEST_IP="192.168.3.1"
     GUEST_MASK="255.255.255.0"
-    GUEST_SSID="Invitados"
+    GUEST_SSID="CRISEGO-INVITADOS"
 
     # Usar el primer radio para invitados
     FIRST_RADIO=$(echo "$RADIOS" | awk '{print $1}')
@@ -498,8 +498,8 @@ if uci get network.guest >/dev/null 2>&1; then
         GUEST_IDX=$((GUEST_IDX - 1))
         uci set sqm.@queue[${GUEST_IDX}].interface="$GUEST_DEVICE"
         uci set sqm.@queue[${GUEST_IDX}].enabled="1"
-        uci set sqm.@queue[${GUEST_IDX}].download="5000"
-        uci set sqm.@queue[${GUEST_IDX}].upload="5000"
+        uci set sqm.@queue[${GUEST_IDX}].download="500"
+        uci set sqm.@queue[${GUEST_IDX}].upload="500"
         uci set sqm.@queue[${GUEST_IDX}].qdisc="cake"
         uci set sqm.@queue[${GUEST_IDX}].script="piece_of_cake.qos"
         uci set sqm.@queue[${GUEST_IDX}].qdisc_options="bandwidth 5000kbit nat dual-dsthost"
@@ -637,11 +637,14 @@ fi
 # --- Verificar DNS ---
 info "Probando resolución DNS..."
 DNS_OK=0
-if command -v nslookup >/dev/null 2>&1; then
-    nslookup openwrt.org 127.0.0.1 >/dev/null 2>&1 && DNS_OK=1
-elif command -v uclient-fetch >/dev/null 2>&1; then
-    uclient-fetch -qO- --timeout=3 "http://openwrt.org" >/dev/null 2>&1 && DNS_OK=1
-fi
+for i in 1 2 3; do
+    if command -v nslookup >/dev/null 2>&1; then
+        nslookup openwrt.org 127.0.0.1 >/dev/null 2>&1 && DNS_OK=1 && break
+    elif command -v uclient-fetch >/dev/null 2>&1; then
+        uclient-fetch -qO- --timeout=3 "http://openwrt.org" >/dev/null 2>&1 && DNS_OK=1 && break
+    fi
+    sleep 1
+done
 [ "$DNS_OK" -eq 1 ] && ok "DNS funcionando correctamente." || \
     warn "DNS no responde. Revisa dnsmasq y https-dns-proxy."
 
