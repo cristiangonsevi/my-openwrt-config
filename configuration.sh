@@ -397,20 +397,31 @@ fi
 AUTH_EOF
         chmod +x /usr/bin/guest-auth.sh
 
-        # UCI config para nodogsplash (OpenWrt usa UCI, no .conf)
-        while uci delete nodogsplash.@nodogsplash[0] 2>/dev/null; do :; done
-        uci add nodogsplash nodogsplash
-        uci set nodogsplash.@nodogsplash[0].enabled='1'
-        uci set nodogsplash.@nodogsplash[0].gatewayinterface="$GUEST_IF"
-        uci set nodogsplash.@nodogsplash[0].gatewayaddress='192.168.3.1'
-        uci set nodogsplash.@nodogsplash[0].gatewayname='CRISEGO-INVITADOS'
-        uci set nodogsplash.@nodogsplash[0].maxclients='50'
-        uci set nodogsplash.@nodogsplash[0].sessiontimeout='60'
-        uci set nodogsplash.@nodogsplash[0].binauth='/usr/bin/guest-auth.sh'
-        uci add_list nodogsplash.@nodogsplash[0].users_to_router='allow tcp port 53'
-        uci add_list nodogsplash.@nodogsplash[0].users_to_router='allow udp port 53'
-        uci add_list nodogsplash.@nodogsplash[0].users_to_router='allow udp port 67'
-        uci commit nodogsplash
+        # Config .conf (nombres oficiales de nodogsplash)
+        mkdir -p /etc/nodogsplash/htdocs
+        cat > /etc/nodogsplash/nodogsplash.conf << NDS_EOF
+GatewayInterface ${GUEST_IF}
+GatewayAddress 192.168.3.1
+GatewayName CRISEGO-INVITADOS
+MaxClients 50
+SessionTimeout 60
+BinAuth /usr/bin/guest-auth.sh
+
+FirewallRuleSet authenticated-users {
+    FirewallRule allow all
+}
+
+FirewallRuleSet preauthenticated-users {
+    FirewallRule allow tcp port 53
+    FirewallRule allow udp port 53
+}
+
+FirewallRuleSet users-to-router {
+    FirewallRule allow udp port 53
+    FirewallRule allow tcp port 53
+    FirewallRule allow udp port 67
+}
+NDS_EOF
 
         # Página splash
         cat > /etc/nodogsplash/htdocs/splash.html << 'HTML_EOF'
