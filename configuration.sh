@@ -6,21 +6,59 @@
 #  Autor: Generado para OpenWrt 21.x / 22.x / 23.x
 # ============================================================
 
+# --- Colores ANSI ---
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+MAGENTA='\033[0;35m'
+CYAN='\033[0;36m'
+WHITE='\033[1;37m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
+
+# --- Funciones helper ---
+ok()   { printf "${GREEN}[OK]${NC} %s\n" "$*"; }
+warn() { printf "${YELLOW}[WARN]${NC} %s\n" "$*"; }
+err()  { printf "${RED}[ERROR]${NC} %s\n" "$*"; }
+info() { printf "${CYAN}[INFO]${NC} %s\n" "$*"; }
+step() {
+    echo ""
+    printf "${BOLD}${BLUE}============================================================${NC}\n"
+    printf "${BOLD}${BLUE}  %s${NC}\n" "$*"
+    printf "${BOLD}${BLUE}============================================================${NC}\n"
+    echo ""
+}
+
+# --- Spinner (POSIX) ---
+spinner() {
+    local pid=$1 msg="$2" delay=0.1 i=0
+    local chars='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+    while kill -0 "$pid" 2>/dev/null; do
+        i=$(( (i + 1) % ${#chars} ))
+        printf "\r  ${CYAN}%s${NC} %s" "$(printf '%s' "$chars" | cut -c $((i+1)))" "$msg"
+        sleep "$delay"
+    done
+    printf "\r\033[K"
+}
+
 LOG="/tmp/openwrt_setup.log"
 exec > >(tee -a "$LOG") 2>&1
 
 echo ""
-echo "============================================================"
-echo "  OpenWrt - Configuración Avanzada DNS + SQM"
-echo "  $(date)"
-echo "============================================================"
+printf "${BOLD}${MAGENTA}"
+echo "  ╔════════════════════════════════════════════════════════╗"
+echo "  ║     OpenWrt · Configuración Avanzada DNS + SQM        ║"
+echo "  ╚════════════════════════════════════════════════════════╝"
+printf "${NC}"
+printf "  ${WHITE}Inicio:${NC} %s\n" "$(date)"
 echo ""
 
 # ------------------------------------------------------------
 # VERIFICAR ROOT
 # ------------------------------------------------------------
 if [ "$(id -u)" -ne 0 ]; then
-    echo "[ERROR] Este script debe ejecutarse como root."
+    err "Este script debe ejecutarse como root."
     exit 1
 fi
 
@@ -28,7 +66,7 @@ fi
 # 1. ACTUALIZAR PAQUETES E INSTALAR DEPENDENCIAS
 # ============================================================
 echo "[1/5] Actualizando lista de paquetes e instalando dependencias..."
-apk update
+echo ""
 
 # SQM (Smart Queue Management)
 apk add luci-app-sqm sqm-scripts sqm-scripts-extra kmod-sched-cake kmod-ifb 2>/dev/null
@@ -39,17 +77,13 @@ apk add https-dns-proxy luci-app-https-dns-proxy 2>/dev/null
 # Herramientas de red adicionales
 apk add irqbalance kmod-nf-conntrack kmod-tcp-bbr 2>/dev/null
 
-echo "[OK] Dependencias instaladas."
-echo ""
+ok "Dependencias instaladas."
 
-# ============================================================
-# 2. CONFIGURACIÓN DNS — Cloudflare + Google + Filtrado
-# ============================================================
-echo "[2/5] Configurando DNS personalizado..."
+step "PASO 2/5 · DNS — Cloudflare + Google + Filtrado"
 
 # --- Respaldo de configuración actual ---
 cp /etc/config/dhcp /etc/config/dhcp.bak 2>/dev/null
-echo "[INFO] Respaldo guardado en /etc/config/dhcp.bak"
+info "Respaldo guardado en /etc/config/dhcp.bak"
 
 # --- Limpiar DNS anteriores del dnsmasq ---
 uci delete dhcp.@dnsmasq[0].server 2>/dev/null
@@ -129,14 +163,9 @@ EOF
 uci commit dhcp
 /etc/init.d/dnsmasq restart
 
-echo "[OK] DNS configurado: Cloudflare Family + Google + SafeSearch activo."
-echo ""
+ok "DNS configurado: Cloudflare Family + Google + SafeSearch activo."
 
-# ============================================================
-# 3. HTTPS-DNS-PROXY (DNS sobre HTTPS — DoH)
-#    Cifra las consultas DNS para mayor privacidad
-# ============================================================
-echo "[3/5] Configurando DNS-over-HTTPS (DoH)..."
+step "PASO 3/5 · DNS-over-HTTPS (DoH)"
 
 if [ -f /etc/config/https-dns-proxy ]; then
     # Limpiar configuración previa
@@ -172,18 +201,12 @@ if [ -f /etc/config/https-dns-proxy ]; then
     uci commit dhcp
     /etc/init.d/dnsmasq restart
 
-    echo "[OK] DNS-over-HTTPS activo (Cloudflare Family DoH + Google DoH)."
+    ok "DNS-over-HTTPS activo (Cloudflare Family DoH + Google DoH)."
 else
-    echo "[WARN] https-dns-proxy no instalado, usando DNS plano con filtrado."
+    warn "https-dns-proxy no instalado, usando DNS plano con filtrado."
 fi
-echo ""
 
-# ============================================================
-# 4. SQM — Smart Queue Management
-#    Conexión coaxial: 140 Mbps bajada / 19 Mbps subida
-#    Algoritmo: CAKE (mejor para coaxial/DOCSIS)
-# ============================================================
-echo "[4/5] Configurando SQM para conexión coaxial 140/19 Mbps..."
+step "PASO 4/5 · SQM — Smart Queue Management"
 
 # Detectar interfaz WAN automáticamente
 WAN_IF=$(uci get network.wan.ifname 2>/dev/null || \
@@ -192,10 +215,10 @@ WAN_IF=$(uci get network.wan.ifname 2>/dev/null || \
 
 if [ -z "$WAN_IF" ]; then
     WAN_IF="eth0.2"   # Valor por defecto común en OpenWrt
-    echo "[WARN] Interfaz WAN no detectada, usando: $WAN_IF"
-    echo "[WARN] Edita WAN_IF en este script si es incorrecta."
+    warn "Interfaz WAN no detectada, usando: $WAN_IF"
+    warn "Edita WAN_IF en este script si es incorrecta."
 else
-    echo "[INFO] Interfaz WAN detectada: $WAN_IF"
+    info "Interfaz WAN detectada: $WAN_IF"
 fi
 
 # -------------------------------------------------------
@@ -253,13 +276,9 @@ uci commit sqm
 /etc/init.d/sqm enable
 /etc/init.d/sqm restart
 
-echo "[OK] SQM CAKE configurado: ${DOWNLOAD_KBPS} kbps bajada / ${UPLOAD_KBPS} kbps subida."
-echo ""
+ok "SQM CAKE configurado: ${DOWNLOAD_KBPS} kbps bajada / ${UPLOAD_KBPS} kbps subida."
 
-# ============================================================
-# 5. OPTIMIZACIONES GENERALES DEL ROUTER
-# ============================================================
-echo "[5/5] Aplicando optimizaciones generales..."
+step "PASO 5/5 · Optimizaciones del Kernel y Sistema"
 
 # --- Sysctl: parámetros del kernel para mejor rendimiento ---
 cat > /etc/sysctl.d/99-openwrt-optimizations.conf << 'EOF'
@@ -315,25 +334,25 @@ sysctl -p /etc/sysctl.d/99-openwrt-optimizations.conf 2>/dev/null
 # --- IRQ Balance (si está instalado) ---
 if /etc/init.d/irqbalance start 2>/dev/null; then
     /etc/init.d/irqbalance enable
-    echo "[OK] IRQ Balance activado."
+    ok "IRQ Balance activado."
 fi
 
 # --- CPU Governor: forzar rendimiento máximo ---
 for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
     echo performance > "$cpu" 2>/dev/null
 done
-echo "[OK] CPU governor: performance."
+ok "CPU governor: performance."
 
 # --- RPS: distribuir interrupciones de red entre núcleos ---
 if [ -n "$WAN_IF" ] && [ -d /sys/class/net/"$WAN_IF"/queues ]; then
     echo 3 > /sys/class/net/"$WAN_IF"/queues/rx-0/rps_cpus 2>/dev/null
-    echo "[OK] RPS activado en $WAN_IF."
+    ok "RPS activado en $WAN_IF."
 fi
 
 # --- ethtool: habilitar hardware offloading ---
 if command -v ethtool >/dev/null 2>&1; then
     ethtool -K "$WAN_IF" gro on gso on 2>/dev/null
-    echo "[OK] ethtool offloading habilitado en $WAN_IF."
+    ok "ethtool offloading habilitado en $WAN_IF."
 fi
 
 # --- Deshabilitar servicios innecesarios ---
@@ -348,32 +367,31 @@ uci set firewall.@defaults[0].tcp_syncookies="1"
 uci commit firewall
 /etc/init.d/firewall reload
 
-echo "[OK] Optimizaciones del kernel aplicadas."
-echo ""
+ok "Optimizaciones del kernel aplicadas."
 
 # ============================================================
 # RESUMEN FINAL
 # ============================================================
-echo "============================================================"
-echo "  CONFIGURACIÓN COMPLETADA EXITOSAMENTE"
-echo "============================================================"
+printf "\n${BOLD}${GREEN}"
+echo "  ╔════════════════════════════════════════════════════════╗"
+echo "  ║      CONFIGURACIÓN COMPLETADA EXITOSAMENTE            ║"
+echo "  ╚════════════════════════════════════════════════════════╝"
+printf "${NC}\n"
+printf "  ${CYAN}DNS Primario${NC}  : 1.1.1.3 (Cloudflare Family — bloquea adultos)\n"
+printf "  ${CYAN}DNS Secundario${NC}: 1.0.0.3 (Cloudflare Family)\n"
+printf "  ${CYAN}DNS Fallback${NC}  : 8.8.8.8 / 8.8.4.4 (Google)\n"
+printf "  ${CYAN}DoH${NC}           : family.cloudflare-dns.com + dns.google\n"
+printf "  ${CYAN}SafeSearch${NC}    : Google, Bing, YouTube (modo restringido)\n"
 echo ""
-echo "  DNS Primario  : 1.1.1.3 (Cloudflare Family — bloquea adultos)"
-echo "  DNS Secundario: 1.0.0.3 (Cloudflare Family)"
-echo "  DNS Fallback  : 8.8.8.8 / 8.8.4.4 (Google)"
-echo "  DoH           : family.cloudflare-dns.com + dns.google"
-echo "  SafeSearch    : Google, Bing, YouTube (modo restringido)"
+printf "  ${CYAN}SQM Algoritmo${NC} : CAKE (óptimo para coaxial/DOCSIS)\n"
+printf "  ${CYAN}Interfaz WAN${NC}  : ${WAN_IF}\n"
+printf "  ${CYAN}Bajada SQM${NC}    : ${DOWNLOAD_KBPS} kbps (90% de 150 Mbps)\n"
+printf "  ${CYAN}Subida SQM${NC}    : ${UPLOAD_KBPS} kbps  (90% de 20 Mbps)\n"
+printf "  ${CYAN}Overhead${NC}      : 22 bytes (DOCSIS coaxial)\n"
 echo ""
-echo "  SQM Algoritmo : CAKE (óptimo para coaxial/DOCSIS)"
-echo "  Interfaz WAN  : $WAN_IF"
-echo "  Bajada SQM    : ${DOWNLOAD_KBPS} kbps (90% de 150 Mbps)"
-echo "  Subida SQM    : ${UPLOAD_KBPS} kbps  (90% de 20 Mbps)"
-echo "  Overhead      : 22 bytes (DOCSIS coaxial)"
+printf "  ${CYAN}Log${NC} guardado en: ${LOG}\n"
 echo ""
-echo "  Log guardado en: $LOG"
+printf "  ${YELLOW}RECOMENDACIÓN:${NC} Reinicia el router para aplicar todos\n"
+printf "  ${YELLOW}los cambios del kernel:${NC}\n"
+printf "  ${BOLD}\$ reboot${NC}\n"
 echo ""
-echo "  RECOMENDACIÓN: Reinicia el router para aplicar todos"
-echo "  los cambios del kernel:"
-echo "  $ reboot"
-echo ""
-echo "============================================================"
