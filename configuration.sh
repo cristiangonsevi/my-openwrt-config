@@ -68,7 +68,7 @@ fi
 # ============================================================
 # 0. ELIMINAR PAQUETES CONFLICTIVOS
 # ============================================================
-step "PASO 1/7 · Limpiar Paquetes Conflictivos"
+step "PASO 1/8 · Limpiar Paquetes Conflictivos"
 
 info "Eliminando paquetes que entran en conflicto con esta config..."
 for pkg in adblock-fast luci-app-adblock-fast family-dns safe-search; do
@@ -81,7 +81,7 @@ ok "Paquetes conflictivos eliminados."
 # ============================================================
 # 1. ACTUALIZAR PAQUETES E INSTALAR DEPENDENCIAS
 # ============================================================
-step "PASO 2/7 · Paquetes y Dependencias"
+step "PASO 2/8 · Paquetes y Dependencias"
 
 apk update
 
@@ -96,7 +96,7 @@ apk add irqbalance kmod-nf-conntrack kmod-tcp-bbr 2>/dev/null
 
 ok "Dependencias instaladas."
 
-step "PASO 3/7 · DNS — Cloudflare + Google + Filtrado"
+step "PASO 3/8 · DNS — Cloudflare + Google + Filtrado"
 
 # --- Respaldo de configuración actual ---
 cp /etc/config/dhcp /etc/config/dhcp.bak 2>/dev/null
@@ -188,7 +188,7 @@ uci commit dhcp
 
 ok "DNS configurado: Cloudflare Family + Google + SafeSearch activo."
 
-step "PASO 4/7 · Bloqueo de Anuncios y Rastreadores"
+step "PASO 4/8 · Bloqueo de Anuncios y Rastreadores"
 
 # --- Descargar lista de anuncios/malware/tracking (StevenBlack) ---
 ADLIST_URL="https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
@@ -216,7 +216,19 @@ warn "Si algunos sitios no cargan, revisa /etc/dnsmasq.d/adblock.conf"
 # Recargar dnsmasq para aplicar bloqueo de anuncios
 /etc/init.d/dnsmasq restart
 
-step "PASO 5/7 · DNS-over-HTTPS (DoH)"
+step "PASO 5/8 · DNS-over-HTTPS (DoH)"
+
+# --- Verificar sincronización de hora (TLS/DoH lo necesita) ---
+info "Verificando sincronización NTP..."
+if ntpctl -s status 2>/dev/null | grep -qi 'synced\|peer'; then
+    ok "Hora sincronizada: $(date '+%Y-%m-%d %H:%M:%S')"
+else
+    warn "Reloj no sincronizado. Forzando sincronización NTP..."
+    ntpd -q -p 0.openwrt.pool.ntp.org -p 1.openwrt.pool.ntp.org 2>/dev/null && \
+        ok "Hora sincronizada: $(date '+%Y-%m-%d %H:%M:%S')" || \
+        warn "No se pudo sincronizar. DoH puede fallar si el reloj está muy desfasado."
+fi
+echo ""
 
 if [ -f /etc/config/https-dns-proxy ]; then
     # Limpiar configuración previa
@@ -259,7 +271,7 @@ else
     warn "https-dns-proxy no instalado, usando DNS plano con filtrado."
 fi
 
-step "PASO 6/7 · SQM — Smart Queue Management"
+step "PASO 6/8 · SQM — Smart Queue Management"
 
 # Detectar interfaz WAN automáticamente
 WAN_IF=$(uci get network.wan.ifname 2>/dev/null || \
@@ -331,7 +343,7 @@ uci commit sqm
 
 ok "SQM CAKE configurado: ${DOWNLOAD_KBPS} kbps bajada / ${UPLOAD_KBPS} kbps subida."
 
-step "PASO 7/7 · Optimizaciones del Kernel y Sistema"
+step "PASO 7/8 · Optimizaciones del Kernel y Sistema"
 
 # --- Sysctl: parámetros del kernel para mejor rendimiento ---
 cat > /etc/sysctl.d/99-openwrt-optimizations.conf << 'EOF'
@@ -419,7 +431,50 @@ uci set firewall.@defaults[0].tcp_syncookies="1"
 uci commit firewall
 /etc/init.d/firewall reload
 
+# --- MSS Clamping (evita fragmentación en DOCSIS) ---
+iptables -t mangle -F FORWARD 2>/dev/null
+iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -o "$WAN_IF" -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null && \
+    ok "MSS Clamping activado en $WAN_IF."
+
 ok "Optimizaciones del kernel aplicadas."
+
+# ============================================================
+# 8. VERIFICACIÓN FINAL
+# ============================================================
+step "PASO 8/8 · Verificación Final"
+
+# --- Verificar hora ---
+info "Verificando estado del sistema..."
+CURRENT_TIME=$(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null)
+if [ "$(date +%Y 2>/dev/null)" -gt 2024 ] 2>/dev/null; then
+    ok "Reloj sincronizado: ${CURRENT_TIME}"
+else
+    warn "Reloj desincronizado (año: $(date +%Y)). DoH y TLS pueden fallar."
+fi
+
+# --- Verificar DNS ---
+info "Probando resolución DNS..."
+if nslookup openwrt.org 127.0.0.1 >/dev/null 2>&1; then
+    ok "DNS funcionando correctamente."
+else
+    warn "DNS no responde. Revisa dnsmasq y https-dns-proxy."
+fi
+
+# --- Verificar SQM ---
+if [ -x /etc/init.d/sqm ] && /etc/init.d/sqm status 2>/dev/null | grep -q 'running'; then
+    ok "SQM CAKE está activo en ${WAN_IF}."
+elif [ -x /etc/init.d/sqm ]; then
+    warn "SQM está instalado pero no corriendo."
+else
+    info "SQM no instalado."
+fi
+
+# --- Verificar MSS Clamping ---
+if iptables -t mangle -L FORWARD 2>/dev/null | grep -q 'TCPMSS'; then
+    ok "MSS Clamping activo."
+fi
+
+echo ""
 
 # ============================================================
 # RESUMEN FINAL
