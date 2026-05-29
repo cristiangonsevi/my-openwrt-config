@@ -177,16 +177,16 @@ fi
 BLOCKED=$(grep -c 'address=/' /etc/dnsmasq.d/safesearch.conf 2>/dev/null || echo "0")
 ok "Lista de bloqueo cargada: ${BLOCKED} dominios bloqueados."
 
-uci commit dhcp
-/etc/init.d/dnsmasq restart
-
-ok "DNS configurado: Cloudflare Family + Google + SafeSearch activo."
-
 # --- Bloquear DNS IPv6 para evitar bypass del filtro ---
 if uci get dhcp.@dnsmasq[0].filter_aaaa >/dev/null 2>&1; then
     uci set dhcp.@dnsmasq[0].filter_aaaa="1"
     info "Filtro AAAA (IPv6 DNS) activado para prevenir bypass."
 fi
+
+uci commit dhcp
+/etc/init.d/dnsmasq restart
+
+ok "DNS configurado: Cloudflare Family + Google + SafeSearch activo."
 
 step "PASO 4/6 · DNS-over-HTTPS (DoH)"
 
