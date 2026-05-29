@@ -139,6 +139,7 @@ uci set dhcp.@dnsmasq[0].readethers="1"
 uci set dhcp.@dnsmasq[0].leasefile="/tmp/dhcp.leases"
 
 # --- Forzar SafeSearch en Google, YouTube, Bing ---
+mkdir -p /etc/dnsmasq.d
 cat > /etc/dnsmasq.d/safesearch.conf << 'EOF'
 # ---- Cache tuning ----
 max-cache-ttl=3600
@@ -483,22 +484,43 @@ ok "SQM CAKE configurado: ${DOWNLOAD_KBPS} kbps bajada / ${UPLOAD_KBPS} kbps sub
 
 # --- SQM para red de invitados (5 Mbps) ---
 if uci get network.guest >/dev/null 2>&1; then
-    GUEST_DEVICE=$(uci get network.guest.ifname 2>/dev/null)
+    # Detectar dispositivo real de la red guest
+    GUEST_DEVICE=$(uci get network.guest.device 2>/dev/null)
+    if [ -z "$GUEST_DEVICE" ] || ! ip link show "$GUEST_DEVICE" >/dev/null 2>&1; then
+        # Buscar interfaz con IP de guest (192.168.3.x)
+        GUEST_DEVICE=$(ip -4 addr show | grep -B2 '192\.168\.3\.' | grep -oE '^[0-9]+: [^:@]+' | awk '{print $2}' | head -1)
+    fi
     [ -z "$GUEST_DEVICE" ] && GUEST_DEVICE="guest"
 
-    uci add sqm queue
-    GUEST_IDX=$(uci show sqm | grep -c "=queue")
-    GUEST_IDX=$((GUEST_IDX - 1))
-    uci set sqm.@queue[${GUEST_IDX}].interface="$GUEST_DEVICE"
-    uci set sqm.@queue[${GUEST_IDX}].enabled="1"
-    uci set sqm.@queue[${GUEST_IDX}].download="5000"
-    uci set sqm.@queue[${GUEST_IDX}].upload="5000"
-    uci set sqm.@queue[${GUEST_IDX}].qdisc="cake"
-    uci set sqm.@queue[${GUEST_IDX}].script="piece_of_cake.qos"
-    uci set sqm.@queue[${GUEST_IDX}].qdisc_options="bandwidth 5000kbit nat dual-dsthost"
-    uci commit sqm
-    /etc/init.d/sqm restart
-    ok "SQM invitados: 5 Mbps en ${GUEST_DEVICE}."
+    if ip link show "$GUEST_DEVICE" >/dev/null 2>&1; then
+        uci add sqm queue
+        GUEST_IDX=$(uci show sqm | grep -c "=queue")
+        GUEST_IDX=$((GUEST_IDX - 1))
+        uci set sqm.@queue[${GUEST_IDX}].interface="$GUEST_DEVICE"
+        uci set sqm.@queue[${GUEST_IDX}].enabled="1"
+        uci set sqm.@queue[${GUEST_IDX}].download="5000"
+        uci set sqm.@queue[${GUEST_IDX}].upload="5000"
+        uci set sqm.@queue[${GUEST_IDX}].qdisc="cake"
+        uci set sqm.@queue[${GUEST_IDX}].script="piece_of_cake.qos"
+        uci set sqm.@queue[${GUEST_IDX}].qdisc_options="bandwidth 5000kbit nat dual-dsthost"
+        uci commit sqm
+        /etc/init.d/sqm restart
+        ok "SQM invitados: 5 Mbps en ${GUEST_DEVICE}."
+    else
+        warn "Interfaz guest no disponible aún. SQM invitados se aplicará al reiniciar."
+        # Crear entrada de todas formas para que SQM la tome luego
+        uci add sqm queue
+        GUEST_IDX=$(uci show sqm | grep -c "=queue")
+        GUEST_IDX=$((GUEST_IDX - 1))
+        uci set sqm.@queue[${GUEST_IDX}].interface="guest"
+        uci set sqm.@queue[${GUEST_IDX}].enabled="1"
+        uci set sqm.@queue[${GUEST_IDX}].download="5000"
+        uci set sqm.@queue[${GUEST_IDX}].upload="5000"
+        uci set sqm.@queue[${GUEST_IDX}].qdisc="cake"
+        uci set sqm.@queue[${GUEST_IDX}].script="piece_of_cake.qos"
+        uci set sqm.@queue[${GUEST_IDX}].qdisc_options="bandwidth 5000kbit nat dual-dsthost"
+        uci commit sqm
+    fi
 else
     info "Red de invitados no configurada. SQM invitados omitido."
 fi
@@ -563,7 +585,7 @@ fi
 
 # --- CPU Governor: forzar rendimiento máximo ---
 for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
-    echo performance > "$cpu" 2>/dev/null
+    [ -f "$cpu" ] && echo performance > "$cpu" 2>/dev/null
 done
 ok "CPU governor: performance."
 
@@ -624,8 +646,10 @@ fi
     warn "DNS no responde. Revisa dnsmasq y https-dns-proxy."
 
 # --- Verificar SQM ---
-if [ -x /etc/init.d/sqm ] && /etc/init.d/sqm status 2>/dev/null | grep -q 'running'; then
-    ok "SQM CAKE está activo en ${WAN_IF}."
+if [ -x /etc/init.d/sqm ] && /etc/init.d/sqm status 2>/dev/null | grep -qv 'not running'; then
+    ok "SQM CAKE está activo."
+elif tc -s qdisc show dev "$WAN_IF" 2>/dev/null | grep -q 'cake'; then
+    ok "SQM CAKE detectado en ${WAN_IF}."
 elif [ -x /etc/init.d/sqm ]; then
     warn "SQM está instalado pero no corriendo."
 else
@@ -655,8 +679,8 @@ printf "  ${CYAN}SafeSearch${NC}    : Google, Bing, YouTube (modo restringido)\n
 echo ""
 printf "  ${CYAN}SQM Algoritmo${NC} : CAKE (óptimo para coaxial/DOCSIS)\n"
 printf "  ${CYAN}Interfaz WAN${NC}  : ${WAN_IF}\n"
-printf "  ${CYAN}Bajada SQM${NC}    : ${DOWNLOAD_KBPS} kbps (90% de 150 Mbps)\n"
-printf "  ${CYAN}Subida SQM${NC}    : ${UPLOAD_KBPS} kbps  (90% de 20 Mbps)\n"
+printf "  ${CYAN}Bajada SQM${NC}    : ${DOWNLOAD_KBPS} kbps (90%% de 150 Mbps)\n"
+printf "  ${CYAN}Subida SQM${NC}    : ${UPLOAD_KBPS} kbps  (90%% de 20 Mbps)\n"
 printf "  ${CYAN}Overhead${NC}      : 22 bytes (DOCSIS coaxial)\n"
 echo ""
 printf "  ${CYAN}Log${NC} guardado en: ${LOG}\n"
