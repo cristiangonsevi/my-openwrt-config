@@ -313,23 +313,23 @@ else
             *)          SSID="${WIFI_SSID_24}" ;;
         esac
 
-        # Buscar wifi-iface existente para esta radio
-        IFACE=$(uci show wireless | grep "wifi-iface" | grep "device='${RADIO}'" | head -1 | cut -d. -f2 | cut -d= -f1)
-        if [ -z "$IFACE" ]; then
-            # Si no hay AP principal, crear uno
-            IFACE="main_${RADIO}"
-            uci delete wireless.${IFACE} 2>/dev/null
-            uci set wireless.${IFACE}=wifi-iface
-            uci set wireless.${IFACE}.device="${RADIO}"
-            uci set wireless.${IFACE}.mode="ap"
-        fi
+        # Eliminar TODAS las wifi-iface previas de esta radio (excepto guest)
+        uci show wireless | grep "wifi-iface" | grep "device='${RADIO}'" | \
+            cut -d. -f2 | cut -d= -f1 | while read -r old_iface; do
+            [ "$old_iface" != "guest" ] && uci delete wireless."$old_iface" 2>/dev/null
+        done
 
+        # Crear una única wifi-iface limpia por radio
+        IFACE="main_${RADIO}"
+        uci set wireless.${IFACE}=wifi-iface
+        uci set wireless.${IFACE}.device="${RADIO}"
+        uci set wireless.${IFACE}.mode="ap"
         uci set wireless.${IFACE}.ssid="${SSID}"
         uci set wireless.${IFACE}.encryption="sae-mixed"
         uci set wireless.${IFACE}.key="${WIFI_PASS}"
         uci set wireless.${IFACE}.network="lan"
 
-        info "WiFi ${SSID} configurado en ${RADIO} (WPA2)."
+        info "WiFi ${SSID} configurado en ${RADIO} (WPA2/WPA3)."
     done
 
     # --- Red invitados (abierta, aislada) ---
@@ -339,7 +339,7 @@ else
     GUEST_SSID="${GUEST_SSID}"
 
     # Usar el primer radio para invitados
-    FIRST_RADIO=$(echo "$RADIOS" | awk '{print $1}')
+    FIRST_RADIO=$(echo "$RADIOS" | head -n1)
 
     # Red
     uci delete network.${GUEST_NET} 2>/dev/null
@@ -1166,9 +1166,13 @@ uci commit firewall
 /etc/init.d/firewall reload
 
 # --- MSS Clamping (evita fragmentación en DOCSIS) ---
+# nftables (fw4) en vez de iptables legacy — compatible con OpenWrt 23.05+
+# Limpiar reglas iptables legacy previas si existen
 iptables -t mangle -F FORWARD 2>/dev/null
-iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -o "$WAN_IF" -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null && \
-    ok "MSS Clamping activado en $WAN_IF."
+nft add rule inet fw4 forward oifname "$WAN_IF" tcp flags syn / syn,rst counter \
+    tcp option maxseg size set rt mtu 2>/dev/null && \
+    ok "MSS Clamping activado en $WAN_IF (nftables)." || \
+    warn "No se pudo activar MSS Clamping. ¿fw4 está activo?"
 
 ok "Optimizaciones del kernel aplicadas."
 
@@ -1212,8 +1216,8 @@ else
 fi
 
 # --- Verificar MSS Clamping ---
-if iptables -t mangle -L FORWARD 2>/dev/null | grep -q 'TCPMSS'; then
-    ok "MSS Clamping activo."
+if nft list chain inet fw4 forward 2>/dev/null | grep -q 'maxseg'; then
+    ok "MSS Clamping activo (nftables)."
 fi
 
 echo ""
