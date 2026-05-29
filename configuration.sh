@@ -94,6 +94,9 @@ apk add https-dns-proxy luci-app-https-dns-proxy 2>/dev/null
 # Herramientas de red adicionales
 apk add irqbalance kmod-nf-conntrack kmod-tcp-bbr 2>/dev/null
 
+# Prerequisitos para el script (curl/wget para blocklists, bind para nslookup)
+apk add curl bind-client ethtool 2>/dev/null
+
 ok "Dependencias instaladas."
 
 step "PASO 3/9 · DNS — Cloudflare + Google + Filtrado"
@@ -484,13 +487,15 @@ if uci get network.guest >/dev/null 2>&1; then
     [ -z "$GUEST_DEVICE" ] && GUEST_DEVICE="guest"
 
     uci add sqm queue
-    uci set sqm.@queue[-1].interface="$GUEST_DEVICE"
-    uci set sqm.@queue[-1].enabled="1"
-    uci set sqm.@queue[-1].download="5000"
-    uci set sqm.@queue[-1].upload="5000"
-    uci set sqm.@queue[-1].qdisc="cake"
-    uci set sqm.@queue[-1].script="piece_of_cake.qos"
-    uci set sqm.@queue[-1].qdisc_options="bandwidth 5000kbit nat dual-dsthost"
+    GUEST_IDX=$(uci show sqm | grep -c "=queue")
+    GUEST_IDX=$((GUEST_IDX - 1))
+    uci set sqm.@queue[${GUEST_IDX}].interface="$GUEST_DEVICE"
+    uci set sqm.@queue[${GUEST_IDX}].enabled="1"
+    uci set sqm.@queue[${GUEST_IDX}].download="5000"
+    uci set sqm.@queue[${GUEST_IDX}].upload="5000"
+    uci set sqm.@queue[${GUEST_IDX}].qdisc="cake"
+    uci set sqm.@queue[${GUEST_IDX}].script="piece_of_cake.qos"
+    uci set sqm.@queue[${GUEST_IDX}].qdisc_options="bandwidth 5000kbit nat dual-dsthost"
     uci commit sqm
     /etc/init.d/sqm restart
     ok "SQM invitados: 5 Mbps en ${GUEST_DEVICE}."
@@ -609,11 +614,14 @@ fi
 
 # --- Verificar DNS ---
 info "Probando resolución DNS..."
-if nslookup openwrt.org 127.0.0.1 >/dev/null 2>&1; then
-    ok "DNS funcionando correctamente."
-else
-    warn "DNS no responde. Revisa dnsmasq y https-dns-proxy."
+DNS_OK=0
+if command -v nslookup >/dev/null 2>&1; then
+    nslookup openwrt.org 127.0.0.1 >/dev/null 2>&1 && DNS_OK=1
+elif command -v uclient-fetch >/dev/null 2>&1; then
+    uclient-fetch -qO- --timeout=3 "http://openwrt.org" >/dev/null 2>&1 && DNS_OK=1
 fi
+[ "$DNS_OK" -eq 1 ] && ok "DNS funcionando correctamente." || \
+    warn "DNS no responde. Revisa dnsmasq y https-dns-proxy."
 
 # --- Verificar SQM ---
 if [ -x /etc/init.d/sqm ] && /etc/init.d/sqm status 2>/dev/null | grep -q 'running'; then
