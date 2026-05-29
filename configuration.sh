@@ -68,7 +68,7 @@ fi
 # ============================================================
 # 0. ELIMINAR PAQUETES CONFLICTIVOS
 # ============================================================
-step "PASO 1/6 · Limpiar Paquetes Conflictivos"
+step "PASO 1/7 · Limpiar Paquetes Conflictivos"
 
 info "Eliminando paquetes que entran en conflicto con esta config..."
 for pkg in adblock-fast luci-app-adblock-fast family-dns safe-search; do
@@ -81,7 +81,7 @@ ok "Paquetes conflictivos eliminados."
 # ============================================================
 # 1. ACTUALIZAR PAQUETES E INSTALAR DEPENDENCIAS
 # ============================================================
-step "PASO 2/6 · Paquetes y Dependencias"
+step "PASO 2/7 · Paquetes y Dependencias"
 
 apk update
 
@@ -96,7 +96,7 @@ apk add irqbalance kmod-nf-conntrack kmod-tcp-bbr 2>/dev/null
 
 ok "Dependencias instaladas."
 
-step "PASO 3/6 · DNS — Cloudflare + Google + Filtrado"
+step "PASO 3/7 · DNS — Cloudflare + Google + Filtrado"
 
 # --- Respaldo de configuración actual ---
 cp /etc/config/dhcp /etc/config/dhcp.bak 2>/dev/null
@@ -188,7 +188,35 @@ uci commit dhcp
 
 ok "DNS configurado: Cloudflare Family + Google + SafeSearch activo."
 
-step "PASO 4/6 · DNS-over-HTTPS (DoH)"
+step "PASO 4/7 · Bloqueo de Anuncios y Rastreadores"
+
+# --- Descargar lista de anuncios/malware/tracking (StevenBlack) ---
+ADLIST_URL="https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
+info "Descargando lista de anuncios y rastreadores..."
+cat > /etc/dnsmasq.d/adblock.conf << 'EOF'
+# ---- Bloqueo de anuncios y rastreadores ----
+EOF
+
+if command -v curl >/dev/null 2>&1; then
+    curl -sL --connect-timeout 10 --max-time 60 "$ADLIST_URL" 2>/dev/null | \
+        grep '^0\.0\.0\.0 ' | awk '{print $2}' | grep -v '^0\.0\.0\.0$' | \
+        grep -v '^#' | grep -v 'localhost$' | \
+        sed 's|.*|address=/&/#|' >> /etc/dnsmasq.d/adblock.conf
+elif command -v wget >/dev/null 2>&1; then
+    wget -qO- --timeout=10 --tries=1 "$ADLIST_URL" 2>/dev/null | \
+        grep '^0\.0\.0\.0 ' | awk '{print $2}' | grep -v '^0\.0\.0\.0$' | \
+        grep -v '^#' | grep -v 'localhost$' | \
+        sed 's|.*|address=/&/#|' >> /etc/dnsmasq.d/adblock.conf
+fi
+
+ADBLOCKED=$(grep -c 'address=/' /etc/dnsmasq.d/adblock.conf 2>/dev/null || echo "0")
+ok "Lista de anuncios cargada: ${ADBLOCKED} dominios bloqueados."
+warn "Si algunos sitios no cargan, revisa /etc/dnsmasq.d/adblock.conf"
+
+# Recargar dnsmasq para aplicar bloqueo de anuncios
+/etc/init.d/dnsmasq restart
+
+step "PASO 5/7 · DNS-over-HTTPS (DoH)"
 
 if [ -f /etc/config/https-dns-proxy ]; then
     # Limpiar configuración previa
@@ -231,7 +259,7 @@ else
     warn "https-dns-proxy no instalado, usando DNS plano con filtrado."
 fi
 
-step "PASO 5/6 · SQM — Smart Queue Management"
+step "PASO 6/7 · SQM — Smart Queue Management"
 
 # Detectar interfaz WAN automáticamente
 WAN_IF=$(uci get network.wan.ifname 2>/dev/null || \
@@ -303,7 +331,7 @@ uci commit sqm
 
 ok "SQM CAKE configurado: ${DOWNLOAD_KBPS} kbps bajada / ${UPLOAD_KBPS} kbps subida."
 
-step "PASO 6/6 · Optimizaciones del Kernel y Sistema"
+step "PASO 7/7 · Optimizaciones del Kernel y Sistema"
 
 # --- Sysctl: parámetros del kernel para mejor rendimiento ---
 cat > /etc/sysctl.d/99-openwrt-optimizations.conf << 'EOF'
