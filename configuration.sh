@@ -37,7 +37,7 @@ apk add luci-app-sqm sqm-scripts sqm-scripts-extra kmod-sched-cake kmod-ifb 2>/d
 apk add https-dns-proxy luci-app-https-dns-proxy 2>/dev/null
 
 # Herramientas de red adicionales
-apk add irqbalance kmod-nf-conntrack 2>/dev/null
+apk add irqbalance kmod-nf-conntrack kmod-tcp-bbr 2>/dev/null
 
 echo "[OK] Dependencias instaladas."
 echo ""
@@ -79,12 +79,16 @@ uci set dhcp.@dnsmasq[0].rebind_localhost="1"
 uci set dhcp.@dnsmasq[0].local="/lan/"
 uci set dhcp.@dnsmasq[0].expandhosts="1"
 uci set dhcp.@dnsmasq[0].nonegcache="0"
-uci set dhcp.@dnsmasq[0].cachesize="1000"
+uci set dhcp.@dnsmasq[0].cachesize="4096"
+uci set dhcp.@dnsmasq[0].dnsforwardmax="512"
 uci set dhcp.@dnsmasq[0].readethers="1"
 uci set dhcp.@dnsmasq[0].leasefile="/tmp/dhcp.leases"
 
 # --- Forzar SafeSearch en Google, YouTube, Bing ---
-cat >> /etc/dnsmasq.conf << 'EOF'
+cat > /etc/dnsmasq.d/safesearch.conf << 'EOF'
+# ---- Cache tuning ----
+max-cache-ttl=3600
+min-cache-ttl=300
 
 # ---- Forzar SafeSearch Google ----
 address=/forcesafesearch.google.com/216.239.38.120
@@ -241,9 +245,9 @@ uci set sqm.@queue[0].linklayer_adapt_mechanism="default"
 uci set sqm.@queue[0].qdisc_advanced="1"
 uci set sqm.@queue[0].ingress_ecn="ECN"
 uci set sqm.@queue[0].egress_ecn="NOECN"
-uci set sqm.@queue[0].squash_dscp="1"
+uci set sqm.@queue[0].squash_dscp="0"
 uci set sqm.@queue[0].squash_ingress="1"
-uci set sqm.@queue[0].qdisc_options="bandwidth ${DOWNLOAD_KBPS}kbit dual-dsthost nat wash ingress diffserv4"
+uci set sqm.@queue[0].qdisc_options="bandwidth ${DOWNLOAD_KBPS}kbit dual-dsthost nat wash ingress ack-filter diffserv4"
 
 uci commit sqm
 /etc/init.d/sqm enable
@@ -258,7 +262,7 @@ echo ""
 echo "[5/5] Aplicando optimizaciones generales..."
 
 # --- Sysctl: parámetros del kernel para mejor rendimiento ---
-cat >> /etc/sysctl.conf << 'EOF'
+cat > /etc/sysctl.d/99-openwrt-optimizations.conf << 'EOF'
 
 # ---- Optimizaciones de red OpenWrt ----
 # Buffer de red aumentado para coaxial
@@ -275,6 +279,16 @@ net.ipv4.tcp_notsent_lowat=16384
 # BBR congestion control (si el kernel lo soporta)
 net.core.default_qdisc=cake
 net.ipv4.tcp_congestion_control=bbr
+
+# No resetear cwnd tras idle (evita arranque lento tras pausa)
+net.ipv4.tcp_slow_start_after_idle=0
+
+# Path MTU discovery proactivo (útil en DOCSIS con MTU variable)
+net.ipv4.tcp_mtu_probing=1
+
+# Más paquetes por ciclo NAPI (mejora throughput en CPU limitada)
+net.core.netdev_budget=600
+net.core.netdev_budget_usecs=8000
 
 # Tabla de conexiones — ampliar para más dispositivos
 net.netfilter.nf_conntrack_max=65536
@@ -296,7 +310,7 @@ net.ipv4.ip_forward=1
 
 EOF
 
-sysctl -p /etc/sysctl.conf 2>/dev/null
+sysctl -p /etc/sysctl.d/99-openwrt-optimizations.conf 2>/dev/null
 
 # --- IRQ Balance (si está instalado) ---
 if /etc/init.d/irqbalance start 2>/dev/null; then
@@ -304,17 +318,35 @@ if /etc/init.d/irqbalance start 2>/dev/null; then
     echo "[OK] IRQ Balance activado."
 fi
 
+# --- CPU Governor: forzar rendimiento máximo ---
+for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
+    echo performance > "$cpu" 2>/dev/null
+done
+echo "[OK] CPU governor: performance."
+
+# --- RPS: distribuir interrupciones de red entre núcleos ---
+if [ -n "$WAN_IF" ] && [ -d /sys/class/net/"$WAN_IF"/queues ]; then
+    echo 3 > /sys/class/net/"$WAN_IF"/queues/rx-0/rps_cpus 2>/dev/null
+    echo "[OK] RPS activado en $WAN_IF."
+fi
+
+# --- ethtool: habilitar hardware offloading ---
+if command -v ethtool >/dev/null 2>&1; then
+    ethtool -K "$WAN_IF" gro on gso on 2>/dev/null
+    echo "[OK] ethtool offloading habilitado en $WAN_IF."
+fi
+
+# --- Deshabilitar servicios innecesarios ---
+for svc in odhcp6c rdisc6; do
+    /etc/init.d/$svc stop 2>/dev/null
+done
+
 # --- Optimizar firewall para coaxial ---
 uci set firewall.@defaults[0].syn_flood="1"
 uci set firewall.@defaults[0].drop_invalid="1"
 uci set firewall.@defaults[0].tcp_syncookies="1"
 uci commit firewall
 /etc/init.d/firewall reload
-
-# --- Deshabilitar servicios innecesarios ---
-for svc in odhcp6c rdisc6; do
-    /etc/init.d/$svc stop 2>/dev/null
-done
 
 echo "[OK] Optimizaciones del kernel aplicadas."
 echo ""

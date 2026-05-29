@@ -37,17 +37,19 @@ The script now uses `apk` (newer OpenWrt builds). Compatibility reference:
 
 ## Script Architecture (5 phases)
 
-1. **Dependency install** — `opkg update` then installs `luci-app-sqm`, `https-dns-proxy`, `irqbalance`, kernel modules
-2. **DNS config** — Sets dnsmasq to use Cloudflare Family (1.1.1.3/1.0.0.3) + Google (8.8.8.8/8.8.4.4), disables ISP DNS (`noresolv=1`), appends SafeSearch CNAME overrides and adult domain blocks to `/etc/dnsmasq.conf`
+1. **Dependency install** — `apk update` then `apk add` for `luci-app-sqm`, `https-dns-proxy`, `irqbalance`, `kmod-tcp-bbr`, kernel modules
+2. **DNS config** — Sets dnsmasq to use Cloudflare Family (1.1.1.3/1.0.0.3) + Google (8.8.8.8/8.8.4.4), disables ISP DNS (`noresolv=1`), writes SafeSearch CNAME overrides + adult domain blocks + cache tuning (`max-cache-ttl`, `min-cache-ttl`) to `/etc/dnsmasq.d/safesearch.conf`
 3. **DNS-over-HTTPS** — Configures two `https-dns-proxy` instances (Cloudflare Family on :5053, Google on :5054), then re-points dnsmasq to local DoH proxies
-4. **SQM (CAKE)** — Auto-detects WAN interface, configures `cake` qdisc at 135000/18000 kbps (90% of line rate), DOCSIS overhead 22 bytes, `dual-dsthost` shaper, `diffserv4`
-5. **Kernel tuning** — Writes `/etc/sysctl.conf` (buffer sizes, BBR/cake, conntrack, TCP fastopen), starts `irqbalance`, disables `odhcp6c`/`rdisc6`
+4. **SQM (CAKE)** — Auto-detects WAN interface, configures `cake` qdisc at 135000/18000 kbps (90% of line rate), DOCSIS overhead 22 bytes with advanced link layer params, `dual-dsthost` + `ack-filter` shaper, `diffserv4` with `squash_dscp=0` (preserves DSCP for classification)
+5. **Kernel tuning** — Writes `/etc/sysctl.d/99-openwrt-optimizations.conf` (buffer sizes, BBR/cake, conntrack, TCP fastopen, `tcp_slow_start_after_idle`, `tcp_mtu_probing`, `netdev_budget`), plus CPU governor → `performance`, RPS on WAN, ethtool GRO/GSO offload, `irqbalance`, firewall hardening, disables `odhcp6c`/`rdisc6`
 
 ## Critical Gotchas
 
 - **Must run as root** — script exits immediately if `$(id -u) -ne 0`
-- **OpenWrt-only** — uses `uci`, `opkg`, OpenWrt init scripts — will not work on stock Linux
+- **OpenWrt-only** — uses `uci`, `apk`, OpenWrt init scripts — will not work on stock Linux
 - **Idempotent but destructive** — clears previous DNS servers, SQM queues, https-dns-proxy instances before reapplying. DHCP config backup saved to `/etc/config/dhcp.bak`.
+- **DNS SafeSearch + blocks are now idempotent** — writes to `/etc/dnsmasq.d/safesearch.conf` with `>` (overwrite), not appending to `/etc/dnsmasq.conf`. Safe to rerun.
+- **Sysctl is now idempotent** — writes to `/etc/sysctl.d/99-openwrt-optimizations.conf` with `>` (overwrite), not appending to `/etc/sysctl.conf`.
 - **WAN detection fallback** — tries `network.wan.ifname`, then `network.wan.device`, then `ip route`, then hardcodes `eth0.2`. Agent should check this variable after first run.
 - **SafeSearch is DNS-based CNAME hijack** — not actual parental controls. Uses dnsmasq `address=` and `cname=` directives to redirect search/youtube domains to restricted versions. Easy to bypass, blocks only a hardcoded adult domain list.
 - **Hardcoded speeds** — 135000/18000 kbps. These are 90% of a 150/20 link. Needs adjusting per connection.
@@ -61,7 +63,7 @@ The script now uses `apk` (newer OpenWrt builds). Compatibility reference:
 - **Self-cleaning**: uses `while uci delete ... 2>/dev/null; do :; done` to clear previous config sections
 - **Step numbering**: explicit `[N/5]` labels in echo statements
 - **Comments**: Spanish-language comments throughout (author appears native Spanish speaker)
-- **Error tolerance**: most `opkg install` and service commands silently discard errors with `2>/dev/null`
+- **Error tolerance**: most `apk add` and service commands silently discard errors with `2>/dev/null`
 
 ## No Testing / CI
 
