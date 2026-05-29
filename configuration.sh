@@ -66,9 +66,22 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 # ============================================================
+# 0. ELIMINAR PAQUETES CONFLICTIVOS
+# ============================================================
+step "PASO 1/6 · Limpiar Paquetes Conflictivos"
+
+info "Eliminando paquetes que entran en conflicto con esta config..."
+for pkg in adblock-fast luci-app-adblock-fast family-dns safe-search; do
+    if apk info -e "$pkg" >/dev/null 2>&1; then
+        apk del "$pkg" 2>/dev/null && info "Eliminado: $pkg"
+    fi
+done
+ok "Paquetes conflictivos eliminados."
+
+# ============================================================
 # 1. ACTUALIZAR PAQUETES E INSTALAR DEPENDENCIAS
 # ============================================================
-step "PASO 1/5 · Paquetes y Dependencias"
+step "PASO 2/6 · Paquetes y Dependencias"
 
 apk update
 
@@ -83,7 +96,7 @@ apk add irqbalance kmod-nf-conntrack kmod-tcp-bbr 2>/dev/null
 
 ok "Dependencias instaladas."
 
-step "PASO 2/5 · DNS — Cloudflare + Google + Filtrado"
+step "PASO 3/6 · DNS — Cloudflare + Google + Filtrado"
 
 # --- Respaldo de configuración actual ---
 cp /etc/config/dhcp /etc/config/dhcp.bak 2>/dev/null
@@ -175,7 +188,7 @@ if uci get dhcp.@dnsmasq[0].filter_aaaa >/dev/null 2>&1; then
     info "Filtro AAAA (IPv6 DNS) activado para prevenir bypass."
 fi
 
-step "PASO 3/5 · DNS-over-HTTPS (DoH)"
+step "PASO 4/6 · DNS-over-HTTPS (DoH)"
 
 if [ -f /etc/config/https-dns-proxy ]; then
     # Limpiar configuración previa
@@ -218,7 +231,7 @@ else
     warn "https-dns-proxy no instalado, usando DNS plano con filtrado."
 fi
 
-step "PASO 4/5 · SQM — Smart Queue Management"
+step "PASO 5/6 · SQM — Smart Queue Management"
 
 # Detectar interfaz WAN automáticamente
 WAN_IF=$(uci get network.wan.ifname 2>/dev/null || \
@@ -290,7 +303,7 @@ uci commit sqm
 
 ok "SQM CAKE configurado: ${DOWNLOAD_KBPS} kbps bajada / ${UPLOAD_KBPS} kbps subida."
 
-step "PASO 5/5 · Optimizaciones del Kernel y Sistema"
+step "PASO 6/6 · Optimizaciones del Kernel y Sistema"
 
 # --- Sysctl: parámetros del kernel para mejor rendimiento ---
 cat > /etc/sysctl.d/99-openwrt-optimizations.conf << 'EOF'
