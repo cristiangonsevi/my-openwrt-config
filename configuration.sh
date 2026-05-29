@@ -500,10 +500,20 @@ NDS_EOF
 
         # Calcular valores legibles para el splash
         TIMEOUT_MINS=$((GUEST_TIMEOUT_SEC / 60))
+        if [ $TIMEOUT_MINS -ge 60 ]; then
+            H=$((TIMEOUT_MINS / 60)); M=$((TIMEOUT_MINS % 60))
+            [ $M -eq 0 ] && TIMEOUT_HUMAN="${H}h" || TIMEOUT_HUMAN="${H}h ${M}m"
+        else
+            TIMEOUT_HUMAN="${TIMEOUT_MINS} min"
+        fi
         COOLDOWN_HOURS=$((GUEST_COOLDOWN_SEC / 3600))
+        COOLDOWN_MINS=$(( (GUEST_COOLDOWN_SEC % 3600) / 60 ))
+        if [ $COOLDOWN_HOURS -ge 1 ]; then
+            [ $COOLDOWN_MINS -eq 0 ] && COOLDOWN_HUMAN="${COOLDOWN_HOURS}h" || COOLDOWN_HUMAN="${COOLDOWN_HOURS}h ${COOLDOWN_MINS}m"
+        else
+            COOLDOWN_HUMAN="${COOLDOWN_MINS} min"
+        fi
         GUEST_SPEED_MBPS=$((GUEST_SPEED_KBPS / 1000))
-        [ $TIMEOUT_MINS -ge 60 ] && TIMEOUT_HUMAN="$((TIMEOUT_MINS / 60))h $((TIMEOUT_MINS % 60))m" || TIMEOUT_HUMAN="${TIMEOUT_MINS} min"
-        [ $COOLDOWN_HOURS -ge 1 ] && COOLDOWN_HUMAN="${COOLDOWN_HOURS} hora(s)" || COOLDOWN_HUMAN="${COOLDOWN_HOURS}h"
 
         cat > /etc/nodogsplash/htdocs/splash.html << HTML_EOF
 <!DOCTYPE html>
