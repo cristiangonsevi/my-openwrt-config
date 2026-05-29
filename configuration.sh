@@ -85,9 +85,9 @@ GUEST_DHCP_START=100
 GUEST_DHCP_LIMIT=150
 GUEST_DHCP_LEASE="2h"
 GUEST_SPEED_KBPS=5000       # Límite ancho de banda invitados (kbps)
-GUEST_TIMEOUT_SEC=3600      # 1 hora de navegación (segundos)
+GUEST_TIMEOUT_SEC=60      # 1 hora de navegación (segundos)
 GUEST_COOLDOWN_SEC=21600    # 6 horas entre sesiones (segundos)
-GUEST_SESSION_MIN=60        # Timeout de sesión nodogsplash (minutos)
+GUEST_SESSION_MIN=1       # Timeout de sesión nodogsplash (minutos)
 
 # --- SQM (Smart Queue Management) ---
 SQM_OVERHEAD=22             # Overhead DOCSIS coaxial (bytes)
@@ -398,11 +398,6 @@ else
     uci set firewall.${GUEST_NET}_wan.src="${GUEST_NET}"
     uci set firewall.${GUEST_NET}_wan.dest="wan"
 
-    # Asegurar que WAN hace masquerade para guest también
-    uci set firewall.wan.masq='1'
-    uci add_list firewall.wan.network='wan'
-    uci add_list firewall.wan.network='wan6'
-
     # Bloquear invitados → LAN
     uci delete firewall.${GUEST_NET}_block_lan 2>/dev/null
     uci set firewall.${GUEST_NET}_block_lan=rule
@@ -442,7 +437,7 @@ else
         info "Portal cautivo en interfaz: ${GUEST_IF}"
 
         # Script de control de tiempo por MAC
-        cat > /usr/bin/guest-auth.sh << AUTH_EOF
+        cat > /usr/bin/guest-auth.sh << 'AUTH_EOF'
 #!/bin/sh
 # BinAuth: $0 auth_client <mac> <user> <pass>
 METHOD="$1"
@@ -457,19 +452,23 @@ if [ "$METHOD" != "auth_client" ]; then
 fi
 
 LAST=$(grep "^${MAC} " "$SESSION_FILE" 2>/dev/null | awk '{print $2}')
-COOLDOWN=${GUEST_COOLDOWN_SEC}
+COOLDOWN=GUEST_COOLDOWN_SEC
+TIMEOUT=GUEST_TIMEOUT_SEC
 
 if [ -z "$LAST" ] || [ $((NOW - LAST)) -ge $COOLDOWN ]; then
     grep -v "^${MAC} " "$SESSION_FILE" > /tmp/guest_tmp 2>/dev/null
     echo "${MAC} ${NOW}" >> /tmp/guest_tmp
     mv /tmp/guest_tmp "$SESSION_FILE"
-    echo "${GUEST_TIMEOUT_SEC} 0 0"
+    echo "$TIMEOUT 0 0"
     exit 0
 else
     echo "0 0 0"
     exit 1
 fi
 AUTH_EOF
+        # Reemplazar placeholders con valores reales
+        sed -i "s/GUEST_COOLDOWN_SEC/${GUEST_COOLDOWN_SEC}/" /usr/bin/guest-auth.sh
+        sed -i "s/GUEST_TIMEOUT_SEC/${GUEST_TIMEOUT_SEC}/" /usr/bin/guest-auth.sh
         chmod +x /usr/bin/guest-auth.sh
 
         # Config .conf (nombres oficiales de nodogsplash)
@@ -480,6 +479,7 @@ GatewayAddress 192.168.3.1
 GatewayName ${GUEST_SSID}
 MaxClients 50
 SessionTimeout ${GUEST_SESSION_MIN}
+CheckInterval 10
 BinAuth /usr/bin/guest-auth.sh
 
 FirewallRuleSet authenticated-users {
