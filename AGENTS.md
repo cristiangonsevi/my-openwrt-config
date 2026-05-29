@@ -51,7 +51,7 @@ The script now uses `apk` (newer OpenWrt builds). Compatibility reference:
 - **DNS SafeSearch + blocks are now idempotent** — writes to `/etc/dnsmasq.d/safesearch.conf` with `>` (overwrite), not appending to `/etc/dnsmasq.conf`. Safe to rerun.
 - **Sysctl is now idempotent** — writes to `/etc/sysctl.d/99-openwrt-optimizations.conf` with `>` (overwrite), not appending to `/etc/sysctl.conf`.
 - **WAN detection fallback** — tries `network.wan.ifname`, then `network.wan.device`, then `ip route`, then hardcodes `eth0.2`. Agent should check this variable after first run.
-- **SafeSearch is DNS-based CNAME hijack** — not actual parental controls. Uses dnsmasq `address=` and `cname=` directives to redirect search/youtube domains to restricted versions. Easy to bypass, blocks only a hardcoded adult domain list.
+- **SafeSearch is DNS-based CNAME hijack** — not actual parental controls. Uses dnsmasq `address=` and `cname=` directives to redirect search/youtube domains to restricted versions. Easy to bypass.
 - **Hardcoded speeds** — 135000/18000 kbps. These are 90% of a 150/20 link. Needs adjusting per connection.
 - **No rollback logic** — the backup (`/etc/config/dhcp.bak`) is the only safety net. No rollback function exists.
 
