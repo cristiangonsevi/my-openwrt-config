@@ -162,6 +162,7 @@ apk add curl bind-client ethtool 2>/dev/null
 
 # Portal cautivo para invitados
 apk add nodogsplash 2>/dev/null
+apk add iptables-nft kmod-ipt-nat kmod-ipt-core 2>/dev/null
 
 ok "Dependencias instaladas."
 
