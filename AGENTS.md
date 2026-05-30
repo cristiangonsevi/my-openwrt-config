@@ -2,17 +2,78 @@
 
 ## What This Is
 
-A single-file OpenWrt shell script (`configuration.sh`) that configures DNS filtering + SafeSearch + DNS-over-HTTPS + SQM (CAKE) + kernel optimizations on an OpenWrt router. Designed for a **coaxial/DOCSIS 150/20 Mbps connection**.
+An OpenWrt configuration tool with two implementations:
+- **Go CLI** (`go/`) — Modern Cobra-based CLI for remote router configuration via SSH
+- **Shell scripts** (`configuration.sh`, `deploy.sh`) — Original implementation for running directly on router
 
 ## File Structure
 
 ```
 openwrt-config/
 ├── AGENTS.md
-└── configuration.sh   # The full setup script
+├── configuration.sh      # Original: run directly on router
+├── deploy.sh             # Original: deploy via SSH (shell)
+├── go/
+│   ├── go.mod / go.sum   # Go modules
+│   ├── Makefile          # Build targets
+│   ├── cmd/
+│   │   ├── main.go       # Entry point
+│   │   ├── root.go       # CLI structure (cobra commands)
+│   │   └── modules.go    # Module scripts to execute on router
+│   └── internal/
+│       ├── config/       # Configuration structs
+│       ├── ssh/          # SSH client (sshpass)
+│       └── ui/           # Spinners, output styling (lipgloss)
 ```
 
-That's it — single file, no tests, no CI, no Makefile.
+## Go CLI Usage
+
+```sh
+# Build
+cd go && go build -o openwrt-cli ./cmd/...
+
+# Deploy completo
+openwrt-cli deploy -i 192.168.1.1 -p SECRET
+
+# Deploy selectivo (solo módulos específicos)
+openwrt-cli deploy -i 192.168.1.1 -m dns,sqm,wifi -p SECRET
+
+# Ver estado
+openwrt-cli status -i 192.168.1.1 -p SECRET
+
+# Verificar configuración
+openwrt-cli verify -i 192.168.1.1 -p SECRET
+
+# Con SSHPASS (variable de entorno)
+SSHPASS=SECRET openwrt-cli deploy -i 192.168.1.1
+
+# Makefile shortcuts
+make deploy-dns    # Solo DNS
+make deploy-sqm   # Solo SQM
+make deploy-wifi  # Solo WiFi
+make deploy-all   # Todos
+make status       # Estado
+make verify       # Verificar
+```
+
+## Flags
+
+| Flag | Corto | Default | Descripción |
+|------|-------|---------|-------------|
+| `--ip` | `-i` | `192.168.1.1` | IP del router |
+| `--modulos` | `-m` | todos | Módulos a ejecutar (comma-separated) |
+| `--password` | `-p` | SSHPASS env | Contraseña root |
+
+## Módulos disponibles
+
+`cleanup`, `packages`, `dns`, `adblock`, `wifi`, `doh`, `sqm`, `kernel`, `verify`
+
+## Shell Scripts (original)
+
+```
+sh configuration.sh              # Local en el router
+sh deploy.sh                     # Detecta router, copia y ejecuta
+```
 
 ## Package Manager — OpenWrt switched from `opkg` → `apk`
 
