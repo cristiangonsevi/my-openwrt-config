@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"strings"
@@ -13,6 +14,8 @@ import (
 	"openwrt-cli/internal/ssh"
 	"openwrt-cli/internal/ui"
 )
+
+var logFile *os.File
 
 var (
 	ip       string
@@ -94,11 +97,18 @@ func getPassword() string {
 }
 
 func runDeploy(cmd *cobra.Command, args []string) error {
-	if verbose {
-		log.SetOutput(os.Stderr)
+	var err error
+	logFile, err = os.Create("/tmp/openwrt_setup.log")
+	if err == nil {
+		log.SetOutput(io.MultiWriter(os.Stderr, logFile))
 		log.SetFlags(log.LstdFlags | log.Lshortfile)
 	} else {
-		log.SetOutput(nil)
+		log.SetOutput(os.Stderr)
+		log.SetFlags(log.LstdFlags | log.Lshortfile)
+	}
+
+	if verbose {
+		log.SetOutput(os.Stderr)
 	}
 
 	pass := getPassword()
@@ -129,7 +139,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	mods := getModules(modules)
 	if len(mods) == 0 {
-		mods = []string{"cleanup", "packages", "dns", "adblock", "wifi", "doh", "sqm", "kernel", "verify"}
+		mods = []string{"cleanup", "packages", "dns", "adblock", "wifi", "portal", "doh", "sqm", "kernel", "verify"}
 	}
 
 	ui.PrintSection("Ejecutando módulos (%d total)", len(mods))
@@ -168,6 +178,11 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 
 	ui.PrintSummary(client)
+
+	if logFile != nil {
+		logFile.Close()
+	}
+
 	return nil
 }
 

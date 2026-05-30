@@ -1,8 +1,17 @@
 package main
 
 import (
+	_ "embed"
+	"encoding/base64"
 	"strings"
 )
+
+//go:embed splash.html
+var splashHTML []byte
+
+func splashHTMLBase64() string {
+	return base64.StdEncoding.EncodeToString(splashHTML)
+}
 
 var modulesScripts = map[string]string{
 	"cleanup": `
@@ -124,6 +133,120 @@ sleep 3
 /etc/init.d/dnsmasq restart
 echo "wifi_done"`,
 
+	"portal": `
+if [ -x /usr/bin/nodogsplash ]; then
+  GUEST_IF=$(ip -4 addr show | grep -B2 '192\.168\.3\.' | grep -oE '^[0-9]+: [^:@]+' | awk '{print $2}' | head -1)
+  [ -z "$GUEST_IF" ] && GUEST_IF="br-guest"
+  cat > /usr/bin/guest-auth.sh << 'AUTH_EOF'
+#!/bin/sh
+METHOD="$1"
+MAC="$2"
+SESSION_FILE="/tmp/guest_sessions.txt"
+NOW=$(date +%s)
+touch "$SESSION_FILE"
+if [ "$METHOD" != "auth_client" ]; then
+  echo "0 0 0"
+  exit 0
+fi
+LAST=$(grep "^${MAC} " "$SESSION_FILE" 2>/dev/null | awk '{print $2}')
+COOLDOWN=21600
+TIMEOUT=3600
+if [ -z "$LAST" ] || [ $((NOW - LAST)) -ge $COOLDOWN ]; then
+  grep -v "^${MAC} " "$SESSION_FILE" > /tmp/guest_tmp 2>/dev/null
+  echo "${MAC} ${NOW}" >> /tmp/guest_tmp
+  mv /tmp/guest_tmp "$SESSION_FILE"
+  echo "$TIMEOUT 0 0"
+  exit 0
+else
+  echo "0 0 0"
+  exit 1
+fi
+AUTH_EOF
+  chmod +x /usr/bin/guest-auth.sh
+  cat > /etc/nodogsplash/htdocs/splash.html <<'ENDHTML'
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CRISEGO-INVITADOS</title>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#09090b;--surface:#18181b;--surface-2:#27272a;--border:rgba(255,255,255,0.08);--border-hover:rgba(255,255,255,0.16);--text-primary:#fafafa;--text-muted:#a1a1aa;--text-faint:#52525b;--accent:#f4f4f5;--accent-fg:#18181b;--badge-bg:#27272a;--badge-border:rgba(255,255,255,0.1);--radius:12px;--radius-sm:8px;--radius-xs:6px}
+body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text-primary);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1rem;background-image:radial-gradient(ellipse 80% 60% at 50% 0%,rgba(255,255,255,0.03) 0%,transparent 60%)}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.75rem;max-width:360px;width:100%;position:relative;overflow:hidden}
+.card::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.12),transparent)}
+.header{margin-bottom:1.25rem}
+.network-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:var(--badge-bg);border:1px solid var(--badge-border);border-radius:50px;font-size:0.6875rem;font-weight:500;margin-bottom:0.75rem}
+.dot{width:6px;height:6px;background:#22c55e;border-radius:50%;box-shadow:0 0 6px #22c55e88}
+h1{font-size:1.5rem;font-weight:600;margin-bottom:0.5rem;letter-spacing:-0.02em}
+.subtitle{font-size:0.8125rem;color:var(--text-muted);line-height:1.5}
+.divider{height:1px;background:var(--border);margin:1.25rem 0}
+.rules-grid{display:flex;flex-direction:column;gap:8px;margin-bottom:1.25rem}
+.rule-item{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface-2);border-radius:var(--radius-xs);font-size:0.8125rem}
+.rule-icon{font-size:1rem;width:20px;text-align:center}
+.rule-text{flex:1;color:var(--text-muted)}
+.rule-value{font-weight:500;color:var(--text-primary)}
+form{margin-top:0.5rem}
+.btn{width:100%;padding:14px;background:var(--accent);color:var(--accent-fg);border:none;border-radius:var(--radius-sm);font-size:0.9375rem;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:opacity .15s,transform .1s}
+.btn:hover{opacity:0.9}
+.btn:active{transform:scale(0.98)}
+.btn svg{width:18px;height:18px}
+.promo-section{margin-top:1.25rem}
+.promo-label{font-size:0.6875rem;font-weight:500;color:var(--text-faint);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em}
+.promo-cards{display:flex;flex-direction:column;gap:6px}
+.promo-card{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);text-decoration:none;transition:border-color .15s,background .15s}
+.promo-card:hover{border-color:var(--border-hover);background:var(--badge-bg)}
+.promo-name{font-size:0.8125rem;font-weight:500;color:var(--text-primary);display:flex;align-items:center;gap:4px}
+.promo-name svg{width:11px;height:11px;color:var(--text-faint);flex-shrink:0}
+.promo-desc{font-size:0.6875rem;color:var(--text-muted);line-height:1.4}
+.footer{margin-top:1rem;text-align:center;font-size:0.6875rem;color:var(--text-faint);letter-spacing:0.02em}
+.footer a{color:var(--text-faint);text-decoration:none}
+</style>
+</head>
+<body>
+<div class="card">
+<div class="header">
+<div class="network-badge"><span class="dot"></span>Red de invitados</div>
+<h1>CRISEGO-INVITADOS</h1>
+<p class="subtitle">Acceso gratuito con limite de tiempo. Acepta las condiciones para continuar.</p>
+</div>
+<div class="divider"></div>
+<div class="rules-grid">
+<div class="rule-item"><span class="rule-icon">⏱</span><span class="rule-text">Sesion disponible</span><span class="rule-value">1h</span></div>
+<div class="rule-item"><span class="rule-icon">🔄</span><span class="rule-text">Se renueva cada</span><span class="rule-value">6h</span></div>
+<div class="rule-item"><span class="rule-icon">🚫</span><span class="rule-text">Contenido adulto</span><span class="rule-value">Bloqueado</span></div>
+<div class="rule-item"><span class="rule-icon">📶</span><span class="rule-text">Velocidad maxima</span><span class="rule-value">5 Mbps</span></div>
+</div>
+<form method="GET" action="$authaction">
+<input type="hidden" name="tok" value="$tok">
+<input type="hidden" name="redir" value="$redir">
+<button type="submit" class="btn">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+Conectar a Internet
+</button>
+</form>
+<div class="promo-section">
+<div class="promo-label">Patrocinado por</div>
+<div class="promo-cards">
+<a class="promo-card" href="https://crisego.com" target="_blank" rel="noopener"><span class="promo-name">crisego.com <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></span><span class="promo-desc">Soluciones y servicios tecnologicos</span></a>
+<a class="promo-card" href="https://termisearch.com" target="_blank" rel="noopener"><span class="promo-name">termisearch.com <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></span><span class="promo-desc">Busqueda y gestion de terminos</span></a>
+</div>
+</div>
+<div class="footer">Powered by OpenWrt - Al conectarte aceptas las condiciones de uso</div>
+</div>
+</body>
+</html>
+ENDHTML
+  rm -f /tmp/guest_sessions.txt
+  killall nodogsplash 2>/dev/null
+  sleep 1
+  /etc/init.d/nodogsplash enable 2>/dev/null
+  /etc/init.d/nodogsplash restart 2>/dev/null
+  sleep 2
+fi
+echo "portal_done"`,
+
 	"doh": `
 DOH_CF_URL="https://family.cloudflare-dns.com/dns-query"
 DOH_GOOGLE_URL="https://dns.google/dns-query"
@@ -209,7 +332,7 @@ echo "=== END VERIFICATION ==="`,
 
 func validModules() []string {
 	return []string{
-		"cleanup", "packages", "dns", "adblock",
+		"cleanup", "packages", "dns", "adblock", "wifi", "portal",
 		"wifi", "doh", "sqm", "kernel", "verify",
 	}
 }
