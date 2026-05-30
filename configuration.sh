@@ -421,6 +421,9 @@ else
     uci commit firewall
 
     /etc/init.d/network reload
+    ifup guest 2>/dev/null
+    wifi reload 2>/dev/null || wifi 2>/dev/null
+    sleep 3
     /etc/init.d/dnsmasq restart
     /etc/init.d/firewall reload
 
