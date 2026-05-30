@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"strings"
 
@@ -19,6 +20,7 @@ var (
 	password string
 	reboot   bool
 	noVerify bool
+	verbose  bool
 )
 
 var rootCmd = &cobra.Command{
@@ -72,6 +74,7 @@ func init() {
 
 	deployCmd.Flags().BoolVarP(&reboot, "reboot", "r", false, "Reiniciar el router al finalizar")
 	deployCmd.Flags().BoolVarP(&noVerify, "no-verify", "n", false, "Omitir verificación final")
+	deployCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Modo verbose (logs de depuración)")
 
 	viper.SetEnvPrefix("OPENWRT")
 	viper.AutomaticEnv()
@@ -91,6 +94,13 @@ func getPassword() string {
 }
 
 func runDeploy(cmd *cobra.Command, args []string) error {
+	if verbose {
+		log.SetOutput(os.Stderr)
+		log.SetFlags(log.LstdFlags | log.Lshortfile)
+	} else {
+		log.SetOutput(nil)
+	}
+
 	pass := getPassword()
 	if pass == "" {
 		ui.PrintError("Se requiere contraseña. Usa -p o SSHPASS")
@@ -110,6 +120,9 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		sp.Stop()
 		ui.PrintError("No se pudo conectar: %v", err)
 		return err
+	}
+	if verbose {
+		client.SetLogger(os.Stderr)
 	}
 	sp.Stop()
 	ui.PrintOK("Conectado a %s", ip)
