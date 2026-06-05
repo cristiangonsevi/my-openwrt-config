@@ -4,6 +4,8 @@
 # ============================================================
 
 # --- Velocidad de Internet (Mbps) ---
+# Estos valores son FALLBACK si el speedtest automático falla.
+# El módulo 01b-speedtest.sh detecta la velocidad real con curl.
 LINE_SPEED_DOWN=150
 LINE_SPEED_UP=20
 SQM_PERCENT=90

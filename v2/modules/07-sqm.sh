@@ -36,8 +36,25 @@ fi
 export WAN_IF
 
 # --- Cálculo de velocidades para SQM ---
-DOWNLOAD_KBPS=$(( LINE_SPEED_DOWN * 1000 * SQM_PERCENT / 100 ))
-UPLOAD_KBPS=$(( LINE_SPEED_UP * 1000 * SQM_PERCENT / 100 ))
+# Usar resultados del speedtest si están disponibles, si no usar config
+SPEEDTEST_FILE="/tmp/speedtest_result"
+if [ -f "$SPEEDTEST_FILE.down" ] && [ -f "$SPEEDTEST_FILE.up" ]; then
+    DETECTED_DOWN=$(cat "$SPEEDTEST_FILE.down")
+    DETECTED_UP=$(cat "$SPEEDTEST_FILE.up")
+    if [ "$DETECTED_DOWN" -gt 0 ] 2>/dev/null && [ "$DETECTED_UP" -gt 0 ] 2>/dev/null; then
+        info "Usando velocidades detectadas: ${DETECTED_DOWN}/${DETECTED_UP} Mbps"
+        DOWNLOAD_KBPS=$(( DETECTED_DOWN * 1000 * SQM_PERCENT / 100 ))
+        UPLOAD_KBPS=$(( DETECTED_UP * 1000 * SQM_PERCENT / 100 ))
+    else
+        info "Usando velocidades del config: ${LINE_SPEED_DOWN}/${LINE_SPEED_UP} Mbps"
+        DOWNLOAD_KBPS=$(( LINE_SPEED_DOWN * 1000 * SQM_PERCENT / 100 ))
+        UPLOAD_KBPS=$(( LINE_SPEED_UP * 1000 * SQM_PERCENT / 100 ))
+    fi
+else
+    info "Sin speedtest. Usando velocidades del config: ${LINE_SPEED_DOWN}/${LINE_SPEED_UP} Mbps"
+    DOWNLOAD_KBPS=$(( LINE_SPEED_DOWN * 1000 * SQM_PERCENT / 100 ))
+    UPLOAD_KBPS=$(( LINE_SPEED_UP * 1000 * SQM_PERCENT / 100 ))
+fi
 
 # --- Limpiar instancias SQM previas ---
 while uci delete sqm.@queue[0] 2>/dev/null; do :; done

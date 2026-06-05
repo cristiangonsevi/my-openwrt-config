@@ -18,8 +18,16 @@ if [ -z "$WAN_IF" ]; then
     [ -z "$WAN_IF" ] && WAN_IF="${WAN_IF_FALLBACK}"
 fi
 
-DOWNLOAD_KBPS=$(( LINE_SPEED_DOWN * 1000 * SQM_PERCENT / 100 ))
-UPLOAD_KBPS=$(( LINE_SPEED_UP * 1000 * SQM_PERCENT / 100 ))
+SPEEDTEST_FILE="/tmp/speedtest_result"
+if [ -f "$SPEEDTEST_FILE.down" ] && [ -f "$SPEEDTEST_FILE.up" ]; then
+    DETECTED_DOWN=$(cat "$SPEEDTEST_FILE.down")
+    DETECTED_UP=$(cat "$SPEEDTEST_FILE.up")
+    DOWNLOAD_KBPS=$(( DETECTED_DOWN * 1000 * SQM_PERCENT / 100 ))
+    UPLOAD_KBPS=$(( DETECTED_UP * 1000 * SQM_PERCENT / 100 ))
+else
+    DOWNLOAD_KBPS=$(( LINE_SPEED_DOWN * 1000 * SQM_PERCENT / 100 ))
+    UPLOAD_KBPS=$(( LINE_SPEED_UP * 1000 * SQM_PERCENT / 100 ))
+fi
 
 # --- Verificar hora ---
 info "Verificando estado del sistema..."
