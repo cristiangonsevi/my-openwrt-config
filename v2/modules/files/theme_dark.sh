@@ -69,8 +69,13 @@ click_to_continue() {
 
 	if [ "$tos" = "accepted" ]; then
 		auth_log
-		auth_success
-		auth_fail
+
+		if [ "$ndsstatus" = "authenticated" ]; then
+			auth_success
+		else
+			auth_fail
+		fi
+
 		read_terms
 		footer
 	fi
@@ -203,4 +208,5 @@ display_terms() {
   </form>
 </div>
 TERMS_EOF
+	footer
 }
