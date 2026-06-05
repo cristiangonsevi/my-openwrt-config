@@ -84,6 +84,13 @@ click_to_continue() {
 }
 
 login_form() {
+	# Leer valores reales del config
+	nds_session=$(uci get opennds.@opennds[0].sessiontimeout 2>/dev/null)
+	[ -z "$nds_session" ] && nds_session="60"
+	nds_cooldown=$(grep 'COOLDOWN=' /usr/bin/guest-auth.sh 2>/dev/null | head -1 | cut -d= -f2)
+	[ -z "$nds_cooldown" ] && nds_cooldown="900"
+	nds_cooldown_min=$((nds_cooldown / 60))
+
 	cat << FORM_EOF
 <div style="background:#18181b;border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:1.75rem;max-width:360px;width:100%;position:relative;overflow:hidden;">
   <div style="position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.12),transparent);"></div>
@@ -103,7 +110,12 @@ login_form() {
     <div style="display:flex;align-items:center;gap:10px;padding:9px 11px;background:#27272a;border:1px solid rgba(255,255,255,0.08);border-radius:8px;font-size:0.8125rem;color:#a1a1aa;">
       <span style="font-size:15px;">⏱</span>
       <span style="flex:1;">Sesión disponible</span>
-      <span style="font-size:0.75rem;font-weight:500;color:#fafafa;">$sessiontimeout min</span>
+      <span style="font-size:0.75rem;font-weight:500;color:#fafafa;">$nds_session min</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;padding:9px 11px;background:#27272a;border:1px solid rgba(255,255,255,0.08);border-radius:8px;font-size:0.8125rem;color:#a1a1aa;">
+      <span style="font-size:15px;">🔄</span>
+      <span style="flex:1;">Se renueva cada</span>
+      <span style="font-size:0.75rem;font-weight:500;color:#fafafa;">$nds_cooldown_min min</span>
     </div>
     <div style="display:flex;align-items:center;gap:10px;padding:9px 11px;background:#27272a;border:1px solid rgba(255,255,255,0.08);border-radius:8px;font-size:0.8125rem;color:#a1a1aa;">
       <span style="font-size:15px;">🚫</span>
@@ -113,7 +125,7 @@ login_form() {
     <div style="display:flex;align-items:center;gap:10px;padding:9px 11px;background:#27272a;border:1px solid rgba(255,255,255,0.08);border-radius:8px;font-size:0.8125rem;color:#a1a1aa;">
       <span style="font-size:15px;">📶</span>
       <span style="flex:1;">Velocidad máxima</span>
-      <span style="font-size:0.75rem;font-weight:500;color:#fafafa;">$downloadrate kb/s</span>
+      <span style="font-size:0.75rem;font-weight:500;color:#fafafa;">5 Mb/s</span>
     </div>
   </div>
 
