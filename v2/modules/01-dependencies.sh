@@ -13,10 +13,13 @@ step "PASO 2/10 · Paquetes y Dependencias"
 apk update
 
 # SQM (Smart Queue Management)
-apk add luci-app-sqm sqm-scripts sqm-scripts-extra kmod-sched-cake kmod-ifb 2>/dev/null
+# Nota: sqm-scripts-extra puede no existir en todas las versiones
+apk add luci-app-sqm sqm-scripts kmod-sched-cake kmod-ifb || \
+    warn "SQM: algunos paquetes no se instalaron. Verifica con: apk list | grep sqm"
 
 # DNS-over-HTTPS y filtrado
-apk add https-dns-proxy luci-app-https-dns-proxy 2>/dev/null
+apk add https-dns-proxy luci-app-https-dns-proxy || \
+    warn "DoH: algunos paquetes no se instalaron."
 
 # Herramientas de red adicionales
 apk add irqbalance kmod-nf-conntrack kmod-tcp-bbr 2>/dev/null
@@ -25,6 +28,19 @@ apk add irqbalance kmod-nf-conntrack kmod-tcp-bbr 2>/dev/null
 apk add curl bind-client ethtool 2>/dev/null
 
 # Portal cautivo (openNDS — sucesor de nodogsplash, nftables nativo)
-apk add opennds 2>/dev/null
+apk add opennds || warn "openNDS no se instaló."
 
 ok "Dependencias instaladas."
+
+# --- Verificar que SQM quedó instalado ---
+if [ -x /etc/init.d/sqm ]; then
+    ok "SQM verificado: /etc/init.d/sqm existe."
+else
+    warn "SQM no instalado correctamente. Intentando instalar sqm-scripts solo..."
+    apk add sqm-scripts 2>&1
+    if [ -x /etc/init.d/sqm ]; then
+        ok "SQM instalado (solo sqm-scripts)."
+    else
+        err "SQM no disponible. Instala manualmente: apk add sqm-scripts"
+    fi
+fi

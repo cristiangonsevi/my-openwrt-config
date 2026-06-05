@@ -10,6 +10,16 @@ BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 step "PASO 8/10 · SQM — Smart Queue Management"
 
+# --- Verificar que SQM esté instalado ---
+if [ ! -x /etc/init.d/sqm ]; then
+    warn "SQM no instalado. Intentando instalar..."
+    apk add sqm-scripts kmod-sched-cake kmod-ifb 2>&1
+    if [ ! -x /etc/init.d/sqm ]; then
+        err "SQM no disponible. Saltando configuración SQM."
+        return 0 2>/dev/null || exit 0
+    fi
+fi
+
 # --- Detectar interfaz WAN automáticamente ---
 WAN_IF=$(uci get network.wan.ifname 2>/dev/null || \
          uci get network.wan.device 2>/dev/null || \
