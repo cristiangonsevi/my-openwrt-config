@@ -93,4 +93,4 @@ echo ""
 
 # Ejecutar _main con output a consola Y log (compatible con ash)
 _main "$@" 2>&1 | tee -a "$LOG"
-exit ${PIPESTATUS[0]:-0}
+exit 0
