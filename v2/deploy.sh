@@ -32,7 +32,7 @@ fi
 # --- Buscar router ---
 printf "${CYAN}Detectando router OpenWrt en la red...${NC}\n"
 ROUTER_IP=""
-for ip in 192.168.200.1 192.168.0.1 10.0.0.1; do
+for ip in 192.168.1.1 192.168.200.1 192.168.0.1 10.0.0.1; do
     if ping -c1 -W1 "$ip" >/dev/null 2>&1; then
         ROUTER_IP="$ip"
         break
