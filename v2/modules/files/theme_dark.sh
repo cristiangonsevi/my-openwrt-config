@@ -76,12 +76,10 @@ click_to_continue() {
 			auth_fail
 		fi
 
-		read_terms
 		footer
 	fi
 
 	login_form
-	read_terms
 	footer
 }
 
@@ -143,7 +141,15 @@ login_form() {
     </div>
   </div>
 
-  <div style="margin-top:1rem;text-align:center;font-size:0.6875rem;color:#52525b;letter-spacing:0.02em;">
+  <div style="text-align:center;margin-top:0.5rem;">
+    <form action="/opennds_preauth/" method="get" style="margin:0;">
+      <input type="hidden" name="fas" value="$fas">
+      <input type="hidden" name="terms" value="yes">
+      <input type="submit" value="Términos de Servicio" style="background:none;border:none;color:#52525b;font-family:inherit;font-size:0.6875rem;cursor:pointer;text-decoration:underline;letter-spacing:0.02em;padding:4px 0;">
+    </form>
+  </div>
+
+  <div style="margin-top:0.5rem;text-align:center;font-size:0.6875rem;color:#52525b;letter-spacing:0.02em;">
     Powered by OpenWrt · Al conectarte aceptas las condiciones de uso
   </div>
 </div>
@@ -162,6 +168,13 @@ auth_success() {
   <form>
     <input type="button" VALUE="Continuar" onClick="location.href='$originurl'" style="width:100%;padding:10px 16px;background:#f4f4f5;color:#18181b;border:none;border-radius:8px;font-family:inherit;font-size:0.875rem;font-weight:600;cursor:pointer;">
   </form>
+  <div style="text-align:center;margin-top:0.75rem;">
+    <form action="/opennds_preauth/" method="get" style="margin:0;">
+      <input type="hidden" name="fas" value="$fas">
+      <input type="hidden" name="terms" value="yes">
+      <input type="submit" value="Términos de Servicio" style="background:none;border:none;color:#52525b;font-family:inherit;font-size:0.6875rem;cursor:pointer;text-decoration:underline;padding:4px 0;">
+    </form>
+  </div>
 </div>
 SUCCESS_EOF
 }
@@ -178,6 +191,13 @@ auth_fail() {
   <form>
     <input type="button" VALUE="Reintentar" onClick="location.href='$originurl'" style="width:100%;padding:10px 16px;background:#f4f4f5;color:#18181b;border:none;border-radius:8px;font-family:inherit;font-size:0.875rem;font-weight:600;cursor:pointer;">
   </form>
+  <div style="text-align:center;margin-top:0.75rem;">
+    <form action="/opennds_preauth/" method="get" style="margin:0;">
+      <input type="hidden" name="fas" value="$fas">
+      <input type="hidden" name="terms" value="yes">
+      <input type="submit" value="Términos de Servicio" style="background:none;border:none;color:#52525b;font-family:inherit;font-size:0.6875rem;cursor:pointer;text-decoration:underline;padding:4px 0;">
+    </form>
+  </div>
 </div>
 FAIL_EOF
 }
