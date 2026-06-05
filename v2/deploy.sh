@@ -103,13 +103,9 @@ tar cf "$TARFILE" -C "$SCRIPT_DIR" .
 printf "Copiando a ${CYAN}${ROUTER_IP}:${REMOTE_DIR}${NC}...\n"
 do_ssh "mkdir -p ${REMOTE_DIR}" 2>/dev/null
 
-if [ -n "$USE_PASS" ]; then
-    sshpass -p "$SSH_PASS" scp -o StrictHostKeyChecking=no "$TARFILE" root@"${ROUTER_IP}:${REMOTE_DIR}/pkg.tar"
-    COPY_OK=$?
-else
-    scp -o StrictHostKeyChecking=no "$TARFILE" root@"${ROUTER_IP}:${REMOTE_DIR}/pkg.tar"
-    COPY_OK=$?
-fi
+# Usar pipe SSH en vez de scp (Dropbear no tiene sftp-server)
+cat "$TARFILE" | do_ssh "cat > ${REMOTE_DIR}/pkg.tar"
+COPY_OK=$?
 rm -f "$TARFILE"
 
 if [ "$COPY_OK" -eq 0 ]; then
