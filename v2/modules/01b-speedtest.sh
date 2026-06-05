@@ -12,10 +12,10 @@ BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 step "PASO 3/10 · Detección de Velocidad"
 
 SPEEDTEST_FILE="/tmp/speedtest_result"
-TEST_URL="https://speed.cloudflare.com/__down?bytes=50000000"
-WARMUP_URL="https://speed.cloudflare.com/__down?bytes=10000000"
-TEST_TIMEOUT=60
-TEST_SIZE_MB=50
+TEST_URL="https://speed.cloudflare.com/__down?bytes=25000000"
+WARMUP_URL="https://speed.cloudflare.com/__down?bytes=2000000"
+TEST_TIMEOUT=30
+TEST_SIZE_MB=45
 NUM_TESTS=3
 
 # --- Verificar que curl esté disponible ---
@@ -27,11 +27,11 @@ if ! command -v curl >/dev/null 2>&1; then
 fi
 
 # --- Warm-up: descargar una vez para llenar buffers/cache ---
-info "Calentando conexión (10 MB)..."
+info "Calentando conexión..."
 curl -o /dev/null -s --connect-timeout 5 --max-time 10 "$WARMUP_URL" 2>/dev/null
 
 # --- Ejecutar múltiples tests de descarga ---
-info "Midiendo velocidad de descarga (${NUM_TESTS} intentos de ${TEST_SIZE_MB} MB, máx ${TEST_TIMEOUT}s)..."
+info "Midiendo velocidad de descarga (${NUM_TESTS} intentos de ${TEST_SIZE_MB} MB)..."
 BEST_DL=0
 ATTEMPT=0
 
