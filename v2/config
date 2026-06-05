@@ -1,0 +1,61 @@
+# ============================================================
+#  config — Variables compartidas para todos los módulos
+#  Editar estos valores según tu red
+# ============================================================
+
+# --- Velocidad de Internet (Mbps) ---
+LINE_SPEED_DOWN=150
+LINE_SPEED_UP=20
+SQM_PERCENT=90
+
+# --- DNS ---
+DNS_PRIMARY="1.1.1.3"
+DNS_SECONDARY="1.0.0.3"
+DNS_FALLBACK1="8.8.8.8"
+DNS_FALLBACK2="8.8.4.4"
+DNS_CACHESIZE=4096
+DNS_FORWARDMAX=512
+DNS_MAX_CACHE_TTL=3600
+DNS_MIN_CACHE_TTL=300
+
+# --- DNS-over-HTTPS (DoH) ---
+DOH_CF_URL="https://family.cloudflare-dns.com/dns-query"
+DOH_GOOGLE_URL="https://dns.google/dns-query"
+DOH_BOOTSTRAP_CF="1.1.1.3,1.0.0.3"
+DOH_BOOTSTRAP_GOOGLE="8.8.8.8,8.8.4.4"
+DOH_CF_PORT=5053
+DOH_GOOGLE_PORT=5054
+
+# --- WiFi Principal ---
+WIFI_PASS="123456789000"
+WIFI_SSID_24="CRISEGO"
+WIFI_SSID_5G="CRISEGO-5G"
+
+# --- WiFi Invitados ---
+GUEST_SSID="CRISEGO-INVITADOS"
+GUEST_IP="192.168.3.1"
+GUEST_MASK="255.255.255.0"
+GUEST_DHCP_START=100
+GUEST_DHCP_LIMIT=150
+GUEST_DHCP_LEASE="2h"
+GUEST_SPEED_KBPS=5000
+GUEST_TIMEOUT_SEC=3600
+GUEST_COOLDOWN_SEC=900
+GUEST_SESSION_MIN=60
+
+# --- SQM (Smart Queue Management) ---
+SQM_OVERHEAD=22
+SQM_TC_MTU=1518
+SQM_TSIZE=128
+SQM_MPU=64
+
+# --- Listas de bloqueo ---
+BLOCKLIST_URL="https://raw.githubusercontent.com/emiliodallatorre/adult-hosts-list/refs/heads/main/list.txt"
+ADLIST_URL="https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
+
+# --- NTP ---
+NTP_SERVER_1="0.openwrt.pool.ntp.org"
+NTP_SERVER_2="1.openwrt.pool.ntp.org"
+
+# --- Red (auto-detectado, respaldo) ---
+WAN_IF_FALLBACK="eth0.2"
