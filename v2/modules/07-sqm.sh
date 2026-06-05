@@ -36,25 +36,27 @@ fi
 export WAN_IF
 
 # --- Cálculo de velocidades para SQM ---
-# Usar resultados del speedtest si están disponibles, si no usar config
 SPEEDTEST_FILE="/tmp/speedtest_result"
 if [ -f "$SPEEDTEST_FILE.down" ] && [ -f "$SPEEDTEST_FILE.up" ]; then
     DETECTED_DOWN=$(cat "$SPEEDTEST_FILE.down")
     DETECTED_UP=$(cat "$SPEEDTEST_FILE.up")
     if [ "$DETECTED_DOWN" -gt 0 ] 2>/dev/null && [ "$DETECTED_UP" -gt 0 ] 2>/dev/null; then
-        info "Usando velocidades detectadas: ${DETECTED_DOWN}/${DETECTED_UP} Mbps"
+        info "Velocidades del speedtest: ${DETECTED_DOWN}/${DETECTED_UP} Mbps"
+        info "Velocidades del config  : ${LINE_SPEED_DOWN}/${LINE_SPEED_UP} Mbps"
         DOWNLOAD_KBPS=$(( DETECTED_DOWN * 1000 * SQM_PERCENT / 100 ))
         UPLOAD_KBPS=$(( DETECTED_UP * 1000 * SQM_PERCENT / 100 ))
     else
-        info "Usando velocidades del config: ${LINE_SPEED_DOWN}/${LINE_SPEED_UP} Mbps"
+        info "Speedtest sin resultado válido. Usando config: ${LINE_SPEED_DOWN}/${LINE_SPEED_UP} Mbps"
         DOWNLOAD_KBPS=$(( LINE_SPEED_DOWN * 1000 * SQM_PERCENT / 100 ))
         UPLOAD_KBPS=$(( LINE_SPEED_UP * 1000 * SQM_PERCENT / 100 ))
     fi
 else
-    info "Sin speedtest. Usando velocidades del config: ${LINE_SPEED_DOWN}/${LINE_SPEED_UP} Mbps"
+    info "Sin speedtest. Usando config: ${LINE_SPEED_DOWN}/${LINE_SPEED_UP} Mbps"
     DOWNLOAD_KBPS=$(( LINE_SPEED_DOWN * 1000 * SQM_PERCENT / 100 ))
     UPLOAD_KBPS=$(( LINE_SPEED_UP * 1000 * SQM_PERCENT / 100 ))
 fi
+
+info "SQM aplicará: ${DOWNLOAD_KBPS} kbps down / ${UPLOAD_KBPS} kbps up (${SQM_PERCENT}% de la velocidad)"
 
 # --- Limpiar instancias SQM previas ---
 while uci delete sqm.@queue[0] 2>/dev/null; do :; done
@@ -85,7 +87,7 @@ uci set sqm.@queue[0].ingress_ecn="ECN"
 uci set sqm.@queue[0].egress_ecn="NOECN"
 uci set sqm.@queue[0].squash_dscp="0"
 uci set sqm.@queue[0].squash_ingress="1"
-uci set sqm.@queue[0].qdisc_options="bandwidth ${DOWNLOAD_KBPS}kbit dual-dsthost nat wash ingress ack-filter diffserv4"
+uci set sqm.@queue[0].qdisc_options="dual-dsthost nat wash ingress ack-filter diffserv4"
 
 uci commit sqm
 /etc/init.d/sqm enable
@@ -111,7 +113,7 @@ if uci get network.guest >/dev/null 2>&1; then
         uci set sqm.@queue[${GUEST_IDX}].upload="${GUEST_SPEED_KBPS}"
         uci set sqm.@queue[${GUEST_IDX}].qdisc="cake"
         uci set sqm.@queue[${GUEST_IDX}].script="piece_of_cake.qos"
-        uci set sqm.@queue[${GUEST_IDX}].qdisc_options="bandwidth ${GUEST_SPEED_KBPS}kbit nat dual-dsthost"
+        uci set sqm.@queue[${GUEST_IDX}].qdisc_options="nat dual-dsthost"
         uci commit sqm
         /etc/init.d/sqm restart
         ok "SQM invitados: $(($GUEST_SPEED_KBPS / 1000)) Mbps en ${GUEST_DEVICE}."
@@ -126,7 +128,7 @@ if uci get network.guest >/dev/null 2>&1; then
         uci set sqm.@queue[${GUEST_IDX}].upload="${GUEST_SPEED_KBPS}"
         uci set sqm.@queue[${GUEST_IDX}].qdisc="cake"
         uci set sqm.@queue[${GUEST_IDX}].script="piece_of_cake.qos"
-        uci set sqm.@queue[${GUEST_IDX}].qdisc_options="bandwidth ${GUEST_SPEED_KBPS}kbit nat dual-dsthost"
+        uci set sqm.@queue[${GUEST_IDX}].qdisc_options="nat dual-dsthost"
         uci commit sqm
     fi
 else
